@@ -14,7 +14,7 @@ USER_NAME = os.environ.get("USERNAME", os.environ.get("USER", "User"))
 
 __version__ = metadata.version("viu_media")
 
-AUTHOR = "viu-media"
+AUTHOR = "pain-Medicine"
 GIT_REPO = "github.com"
 GIT_PROTOCOL = "https://"
 REPO_HOME = f"https://{GIT_REPO}/{AUTHOR}/Viu"
