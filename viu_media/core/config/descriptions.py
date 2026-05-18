@@ -9,6 +9,7 @@ GENERAL_PREFERRED_TRACKER = (
 )
 GENERAL_DESKTOP_NOTIFICATION_DURATION = "The duration desktop notifications should be displayed before they disappear in minutes"
 GENERAL_PROVIDER = "The default anime provider to use for scraping."
+GENERAL_DETAILED_LOGGING = "Enable highly detailed logging in app.log. When true, logs contain deep diagnostic data. Log file is cleared when toggled."
 GENERAL_SELECTOR = "The interactive selector tool to use for menus."
 GENERAL_AUTO_SELECT_ANIME_RESULT = (
     "Automatically select the best-matching search result from a provider."

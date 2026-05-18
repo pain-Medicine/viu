@@ -49,8 +49,8 @@ class AllAnime(BaseAnimeProvider):
                 },
                 "limit": params.page_limit,
                 "page": params.current_page,
-                "translationtype": params.translation_type,
-                "countryorigin": params.country_of_origin,
+                "translationType": params.translation_type,
+                "countryOrigin": params.country_of_origin,
             },
             headers=API_GRAPHQL_HEADERS
         )

@@ -40,6 +40,7 @@ class DownloadService:
         self.media_api = media_api_service
         self.provider = provider_service
         self.downloader = create_downloader(config.downloads)
+        logger.debug(f"Initialized DownloadService with provider={provider_service.__class__.__name__}")
         # Track in-flight downloads to avoid duplicate queueing
         self._inflight: set[tuple[int, str]] = set()
 
@@ -51,6 +52,7 @@ class DownloadService:
 
     def start(self):
         """Starts the download worker for background tasks."""
+        logger.debug("Starting download worker")
         if not self._worker.is_running():
             self._worker.start()
         # We can still resume background tasks on startup if any exist
@@ -58,6 +60,7 @@ class DownloadService:
 
     def stop(self):
         """Stops the download worker."""
+        logger.debug("Stopping download worker")
         self._worker.shutdown(wait=False)
 
     def add_to_queue(self, media_item: MediaItem, episode_number: str) -> bool:
@@ -76,10 +79,13 @@ class DownloadService:
         """Submit a download task to the worker if not already in-flight."""
         key = (media_item.id, str(episode_number))
         if key in self._inflight:
+            logger.debug(f"Download for {key} is already in-flight, skipping")
             return False
         if not self._worker.is_running():
+            logger.debug("Download worker not running, starting it")
             self._worker.start()
         self._inflight.add(key)
+        logger.debug(f"Submitting download job for {key} to worker")
         self._worker.submit_function(
             self._execute_download_job, media_item, episode_number
         )
@@ -176,6 +182,7 @@ class DownloadService:
 
     def _execute_download_job(self, media_item: MediaItem, episode_number: str):
         """The core download logic, can be called by worker or synchronously."""
+        logger.debug(f"_execute_download_job started for {media_item.id} ep {episode_number}")
         self.registry.get_or_create_record(media_item)
         try:
             self.registry.update_episode_download_status(
@@ -196,7 +203,9 @@ class DownloadService:
                 )
             )
 
+            logger.debug(f"Provider search returned {len(provider_search_results.results) if provider_search_results else 0} results")
             if not provider_search_results or not provider_search_results.results:
+                logger.error(f"Provider {self.app_config.general.provider.value} found no results for '{media_title}'")
                 raise ValueError(
                     f"Could not find '{media_title}' on provider '{self.app_config.general.provider.value}'"
                 )
@@ -211,10 +220,12 @@ class DownloadService:
             provider_anime_ref = provider_results_map[best_match_title]
 
             # 3. Get full provider anime details (contains the correct episode list)
+            logger.debug(f"Fetching full provider anime details for ID {provider_anime_ref.id}")
             provider_anime = self.provider.get(
                 AnimeParams(id=provider_anime_ref.id, query=media_title)
             )
             if not provider_anime:
+                logger.error(f"Failed to get full details for {best_match_title}")
                 raise ValueError(
                     f"Failed to get full details for '{best_match_title}' from provider."
                 )
@@ -229,10 +240,12 @@ class DownloadService:
                 )
             )
             if not streams_iterator:
+                logger.error("Streams iterator is None")
                 raise ValueError("Provider returned no stream iterator.")
 
             server = next(streams_iterator, None)
             if not server or not server.links:
+                logger.error(f"No stream links found for ep {episode_number} on server {server.name if server else 'None'}")
                 raise ValueError(f"No stream links found for Episode {episode_number}")
 
             if server.name != self.app_config.downloads.server.value:
@@ -264,6 +277,7 @@ class DownloadService:
                 no_check_certificate=self.app_config.downloads.no_check_certificate,
             )
 
+            logger.debug(f"Handing off to downloader.download for {download_params.url}")
             result = self.downloader.download(download_params)
 
             # 6. Update registry based on result
@@ -302,6 +316,7 @@ class DownloadService:
                     pass
                 logger.info(message)
             else:
+                logger.error(f"Download failed inside downloader logic: {result.error_message}")
                 raise ValueError(result.error_message or "Unknown download error")
 
         except Exception as e:

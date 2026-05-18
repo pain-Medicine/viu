@@ -339,6 +339,7 @@ preview = full               ; Preview type in selectors (full, text, image, non
 image_renderer = icat        ; Tool for terminal image previews (icat, chafa).
 icons = True                 ; Display emoji icons in the UI.
 auto_select_anime_result = True ; Automatically select the best search match.
+detailed_logging = False     ; Enable detailed logging for diagnostic purposes.
 ...
 
 # [stream] Section: Controls playback and streaming.
@@ -415,6 +416,15 @@ You can run the background worker as a systemd service for persistence.
     
 ## Project using it
 **[Inazuma](https://github.com/viu-media/Inazuma)** - official gui wrapper over viu built in kivymd
+
+## Troubleshooting & Diagnostics
+
+If you encounter issues with title matching or application behavior, you can enable enhanced diagnostic logging:
+
+1.  **Enable Detailed Logging:** Set `detailed_logging = True` in your `config.ini` or run with `--detailed-logging`.
+2.  **Check Logs:** Logs are stored in the application data directory. Use `viu config --path` to find the directory, and look for `app.log`.
+
+This information is invaluable for opening detailed bug reports or debugging provider matching failures.
 
 ## Contributing
 

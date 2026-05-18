@@ -50,19 +50,22 @@ def _load_normalizer_data() -> Dict[str, Dict[str, str]]:
 def update_user_normalizer_json(
     provider_title: str, media_api_title: str, provider_name: str
 ):
-    import time
-
     from .file import AtomicWriter
 
-    print(
-        "UPDATING USER NORMALIZER JSON. PLEASE CONTRIBUTE TO THE PROJECT BY OPENING A PR ON GITHUB TO MERGE YOUR NORMALIZER JSON TO MAIN. MAEMOTTE KANSHA SHIMASU :)"
-    )
-    print(f"NORMALIZER JSON PATH IS: {USER_NORMALIZER_JSON}")
-    time.sleep(5)
-    if not _normalizer_cache:
-        raise RuntimeError(
-            "Fatal _normalizer_cache missing this should not be the case : (. Please report"
-        )
+    logger.debug(f"Silently updating fallback normalizer.json with mapping for {provider_name}")
+    global _normalizer_cache
+    if _normalizer_cache is None:
+        try:
+            _load_normalizer_data()
+        except Exception:
+            pass
+            
+    if _normalizer_cache is None:
+        _normalizer_cache = {}
+        
+    if provider_name not in _normalizer_cache:
+        _normalizer_cache[provider_name] = {}
+
     _normalizer_cache[provider_name][provider_title] = media_api_title.lower()
     with AtomicWriter(USER_NORMALIZER_JSON) as f:
         json.dump(_normalizer_cache, f, indent=2)

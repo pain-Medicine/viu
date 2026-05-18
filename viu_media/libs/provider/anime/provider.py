@@ -49,8 +49,10 @@ class AnimeProviderFactory:
         package_path = f"viu_media.libs.provider.anime.{provider_name.value.lower()}"
 
         try:
+            logger.debug(f"Attempting to load provider module '{module_name}' from '{package_path}'")
             provider_module = importlib.import_module(f".{module_name}", package_path)
             provider_class = getattr(provider_module, class_name)
+            logger.debug(f"Successfully loaded provider class '{class_name}'")
         except (ImportError, AttributeError) as e:
             logger.error(
                 f"Failed to load provider '{provider_name.value.lower()}': {e}"
@@ -61,6 +63,7 @@ class AnimeProviderFactory:
             ) from e
 
         # Each provider class requires an httpx.Client, which we set up here.
+        logger.debug(f"Creating HTTP client for provider '{provider_name.value}' with User-Agent injection")
         client = Client(
             headers={"User-Agent": random_user_agent(), **provider_class.HEADERS}
         )

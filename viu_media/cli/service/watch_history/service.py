@@ -23,6 +23,7 @@ class WatchHistoryService:
         self.media_api = media_api
 
     def track(self, media_item: MediaItem, player_result: PlayerResult):
+        logger.debug(f"WatchHistoryService.track called for {media_item.id}, episode {player_result.episode}")
         logger.info(
             f"Updating watch history for {media_item.title.english} ({media_item.id}) with Episode={player_result.episode}; Stop Time={player_result.stop_time}; Total Duration={player_result.total_time}"
         )
@@ -33,6 +34,9 @@ class WatchHistoryService:
             and media_item.user_status.status == UserMediaListStatus.COMPLETED
         ):
             status = UserMediaListStatus.REPEATING
+            status = UserMediaListStatus.REPEATING
+        
+        logger.debug(f"Updating local registry with watched=True, status={status}")
         self.media_registry.update_media_index_entry(
             media_id=media_item.id,
             watched=True,
@@ -71,9 +75,11 @@ class WatchHistoryService:
                     "failed to update remote progress with {player_result.episode}"
                 )
         else:
+            logger.debug("Skipping remote watch history update: media_api is not authenticated or not present")
             logger.warning("Not logged in")
 
     def get_episode(self, media_item: MediaItem):
+        logger.debug(f"get_episode called for media item {media_item.id}")
         index_entry = self.media_registry.get_media_index_entry(media_item.id)
         current_remote_episode = None
         current_local_episode = None
@@ -83,6 +89,8 @@ class WatchHistoryService:
         if media_item.user_status:
             # TODO: change mediaa item progress to a string
             current_remote_episode = str(media_item.user_status.progress)
+            logger.debug(f"Remote episode progress: {current_remote_episode}")
+            
         if index_entry:
             current_local_episode = index_entry.progress
             start_time = index_entry.last_watch_position
@@ -115,6 +123,8 @@ class WatchHistoryService:
         # TODO: check if start time is mostly complete and increment the episode
         if episode == "0":
             episode = "1"
+            
+        logger.debug(f"Calculated next episode: {episode}, start_time: {start_time}")
         return episode, start_time
 
     def update(
@@ -125,6 +135,7 @@ class WatchHistoryService:
         score: Optional[float] = None,
         notes: Optional[str] = None,
     ):
+        logger.debug(f"WatchHistoryService.update called for {media_item.id}, progress={progress}, status={status}")
         self.media_registry.update_media_index_entry(
             media_id=media_item.id,
             media_item=media_item,
@@ -154,7 +165,10 @@ class WatchHistoryService:
 
         # If user_status is None, it means the item is not on the user's list.
         if media_item.user_status is None:
+            logger.debug(f"'{media_item.title.english}' not on list. Adding to 'Planning'.")
             logger.info(
                 f"'{media_item.title.english}' not on list. Adding to 'Planning'."
             )
             self.update(media_item, status=UserMediaListStatus.PLANNING)
+        else:
+            logger.debug(f"'{media_item.title.english}' is already on a list.")

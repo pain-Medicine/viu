@@ -21,6 +21,8 @@ def main(ctx: Context, state: State) -> State | InternalDirective:
     feedback = ctx.feedback
     feedback.clear_console()
 
+    logger.debug("Entered main interactive menu")
+
     options: Dict[str, MenuAction] = {
         f"{'🔥 ' if icons else ''}Trending": _create_media_list_action(
             ctx, state, MediaSort.TRENDING_DESC
@@ -69,14 +71,17 @@ def main(ctx: Context, state: State) -> State | InternalDirective:
         f"{'❌ ' if icons else ''}Exit": lambda: InternalDirective.EXIT,
     }
 
+    logger.debug("Prompting user to select category from main menu")
     choice = ctx.selector.choose(
         prompt="Select Category",
         choices=list(options.keys()),
     )
     if not choice:
+        logger.debug("No choice made in main menu, reloading")
         return InternalDirective.MAIN
 
     selected_action = options[choice]
+    logger.debug(f"User selected: {choice}")
 
     next_step = selected_action()
     return next_step
@@ -88,6 +93,7 @@ def _create_media_list_action(
     def action():
         feedback = ctx.feedback
         search_params = MediaSearchParams(sort=sort, status=status)
+        logger.debug(f"Executing media list action with sort={sort}, status={status}")
 
         loading_message = "Fetching media list"
         result = None
@@ -145,6 +151,8 @@ def _create_search_media_list(ctx: Context, state: State) -> MenuAction:
         query = ctx.selector.ask("Search for Anime")
         if not query:
             return InternalDirective.MAIN
+            
+        logger.debug(f"Executing search media list action for query '{query}'")
 
         search_params = MediaSearchParams(query=query)
 
@@ -177,7 +185,9 @@ def _create_user_list_action(
 
     def action():
         feedback = ctx.feedback
+        logger.debug(f"Executing user list action for status={status}")
         if not ctx.media_api.is_authenticated():
+            logger.warning("User list action failed: not authenticated")
             feedback.error("You haven't logged in")
             return InternalDirective.MAIN
 

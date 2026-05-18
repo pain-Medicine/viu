@@ -1,4 +1,5 @@
 from typing import Dict, List
+import logging
 
 from .....libs.player.params import PlayerParams
 from .....libs.provider.anime.params import EpisodeStreamsParams
@@ -6,6 +7,7 @@ from .....libs.provider.anime.types import ProviderServer, Server
 from ...session import Context, session
 from ...state import InternalDirective, MenuName, State
 
+logger = logging.getLogger(__name__)
 
 @session.menu
 def servers(ctx: Context, state: State) -> State | InternalDirective:
@@ -21,7 +23,10 @@ def servers(ctx: Context, state: State) -> State | InternalDirective:
     anime_title = media_item.title.romaji or media_item.title.english
     episode_number = state.provider.episode
 
+    logger.debug(f"Entered servers menu for {anime_title}, episode {episode_number}")
+
     if not provider_anime or not episode_number:
+        logger.error("Missing provider_anime or episode_number in state")
         feedback.error("Anime or episode details are missing")
         return InternalDirective.BACK
 
@@ -43,7 +48,10 @@ def servers(ctx: Context, state: State) -> State | InternalDirective:
         else:
             all_servers: List[Server] = list(server_iterator) if server_iterator else []
 
+    logger.debug(f"Fetched {len(all_servers)} servers")
+
     if not all_servers:
+        logger.error("No servers found")
         feedback.error(f"No streaming servers found for episode {episode_number}")
         return InternalDirective.BACKX3
 
@@ -59,13 +67,16 @@ def servers(ctx: Context, state: State) -> State | InternalDirective:
         feedback.info(f"Auto-selecting preferred server: {selected_server.name}")
     else:
         choices = [*server_map.keys(), "Back"]
+        logger.debug("Prompting user to select server")
         chosen_name = selector.choose("Select Server", choices)
         if not chosen_name or chosen_name == "Back":
+            logger.debug("User selected Back from server selection")
             return InternalDirective.BACK
         selected_server = server_map[chosen_name]
 
     stream_link_obj = _filter_by_quality(selected_server.links, config.stream.quality)
     if not stream_link_obj:
+        logger.error(f"No stream found with quality {config.stream.quality}")
         feedback.error(
             f"No stream of quality '{config.stream.quality}' found on server '{selected_server.name}'."
         )
@@ -79,7 +90,10 @@ def servers(ctx: Context, state: State) -> State | InternalDirective:
     feedback.info(f"[bold green]Launching player for:[/] {final_title}")
 
     if not state.media_api.media_item or not state.provider.anime:
+        logger.error("Lost media_item or provider.anime state before play")
         return InternalDirective.BACKX3
+        
+    logger.debug(f"Launching player with stream link: {stream_link_obj.link}")
     player_result = ctx.player.play(
         PlayerParams(
             url=stream_link_obj.link,
@@ -96,9 +110,13 @@ def servers(ctx: Context, state: State) -> State | InternalDirective:
         state.provider.anime,
         state.media_api.media_item,
     )
+    logger.debug(f"Player session ended. Result: {player_result}")
+    
     if media_item and episode_number:
+        logger.debug("Tracking watch history")
         ctx.watch_history.track(media_item, player_result)
 
+    logger.debug("Transitioning to PLAYER_CONTROLS")
     return State(
         menu_name=MenuName.PLAYER_CONTROLS,
         media_api=state.media_api,

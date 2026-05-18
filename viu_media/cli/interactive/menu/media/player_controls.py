@@ -1,7 +1,10 @@
 from typing import Callable, Dict, Literal, Union
+import logging
 
 from ...session import Context, session
 from ...state import InternalDirective, MenuName, State
+
+logger = logging.getLogger(__name__)
 
 MenuAction = Callable[[], Union[State, InternalDirective]]
 
@@ -27,6 +30,7 @@ def player_controls(ctx: Context, state: State) -> Union[State, InternalDirectiv
         or not selected_server
         or not server_map
     ):
+        logger.error("Player state is incomplete. Returning BACK.")
         feedback.error("Player state is incomplete. Returning.")
         return InternalDirective.BACK
 
@@ -36,6 +40,7 @@ def player_controls(ctx: Context, state: State) -> Union[State, InternalDirectiv
     current_index = available_episodes.index(current_episode_num)
 
     if config.stream.auto_next and current_index < len(available_episodes) - 1:
+        logger.debug("Auto-next is enabled, proceeding to next episode")
         feedback.info("Auto-playing next episode...")
         next_episode_num = available_episodes[current_index + 1]
 
@@ -74,11 +79,14 @@ def player_controls(ctx: Context, state: State) -> Union[State, InternalDirectiv
         }
     )
 
+    logger.debug("Prompting user for player controls action")
     choice = selector.choose(prompt="What's next?", choices=list(options.keys()))
 
     if choice and choice in options:
+        logger.debug(f"User selected: {choice}")
         return options[choice]()
     else:
+        logger.debug("No valid choice made, reloading.")
         return InternalDirective.RELOAD
 
 
@@ -111,6 +119,7 @@ def _next_episode(ctx: Context, state: State) -> MenuAction:
 
         if current_index < len(available_episodes) - 1:
             next_episode_num = available_episodes[current_index + 1]
+            logger.debug(f"Transitioning to next episode: {next_episode_num}")
 
             return State(
                 menu_name=MenuName.SERVERS,
@@ -145,6 +154,7 @@ def _previous_episode(ctx: Context, state: State) -> MenuAction:
 
         if current_index:
             prev_episode_num = available_episodes[current_index - 1]
+            logger.debug(f"Transitioning to previous episode: {prev_episode_num}")
 
             return State(
                 menu_name=MenuName.SERVERS,
@@ -161,6 +171,7 @@ def _previous_episode(ctx: Context, state: State) -> MenuAction:
 
 def _replay(ctx: Context, state: State) -> MenuAction:
     def action():
+        logger.debug("Replaying current episode")
         return InternalDirective.BACK
 
     return action
@@ -189,6 +200,7 @@ def _toggle_config_state(
                 ctx.config.stream.translation_type = (
                     "sub" if ctx.config.stream.translation_type == "dub" else "dub"
                 )
+        logger.debug(f"Toggled config state: {config_state}")
         return InternalDirective.RELOAD
 
     return action
@@ -222,6 +234,7 @@ def _change_server(ctx: Context, state: State) -> MenuAction:
             "Select a different server:", list(server_map.keys())
         )
         if new_server_name:
+            logger.debug(f"Changed server to {new_server_name}")
             ctx.config.stream.server = ProviderServer(new_server_name)
         return InternalDirective.RELOAD
 
@@ -253,6 +266,7 @@ def _change_quality(ctx: Context, state: State) -> MenuAction:
             [link.quality for link in state.provider.server.links],
         )
         if new_quality:
+            logger.debug(f"Changed quality to {new_quality}")
             ctx.config.stream.quality = new_quality  # type:ignore
         return InternalDirective.RELOAD
 

@@ -163,6 +163,10 @@ class GeneralConfig(BaseModel):
         default=ProviderName.ALLANIME,
         description=desc.GENERAL_PROVIDER,
     )
+    detailed_logging: bool = Field(
+        default=defaults.GENERAL_DETAILED_LOGGING,
+        description=desc.GENERAL_DETAILED_LOGGING,
+    )
     selector: Literal["default", "fzf", "rofi"] = Field(
         default_factory=defaults.GENERAL_SELECTOR,
         description=desc.GENERAL_SELECTOR,

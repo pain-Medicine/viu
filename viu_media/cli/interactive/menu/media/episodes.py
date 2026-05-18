@@ -1,5 +1,8 @@
+import logging
 from ...session import Context, session
 from ...state import InternalDirective, MenuName, State
+
+logger = logging.getLogger(__name__)
 
 
 @session.menu
@@ -15,14 +18,19 @@ def episodes(ctx: Context, state: State) -> State | InternalDirective:
     provider_anime = state.provider.anime
     media_item = state.media_api.media_item
 
+    logger.debug(f"Entered episodes menu. Provider anime: {getattr(provider_anime, 'title', 'None')}, Media item ID: {getattr(media_item, 'id', 'None')}")
+
     if not provider_anime or not media_item:
+        logger.error("Episodes menu missing required state: provider_anime or media_item")
         feedback.error("Error: Anime details are missing.")
         return InternalDirective.BACK
 
     available_episodes = getattr(
         provider_anime.episodes, config.stream.translation_type, []
     )
+    logger.debug(f"Available episodes for {config.stream.translation_type}: {len(available_episodes)}")
     if not available_episodes:
+        logger.warning(f"No episodes found for translation_type {config.stream.translation_type}")
         feedback.warning(
             f"No '{config.stream.translation_type}' episodes found for this anime."
         )
@@ -33,8 +41,10 @@ def episodes(ctx: Context, state: State) -> State | InternalDirective:
 
     if config.stream.continue_from_watch_history:
         chosen_episode, start_time = ctx.watch_history.get_episode(media_item)
+        logger.debug(f"Watch history returned episode: {chosen_episode}, start_time: {start_time}")
 
     if not chosen_episode or ctx.switch.show_episodes_menu:
+        logger.debug("Prompting user to select an episode.")
         choices = [*available_episodes, "Back"]
 
         preview_command = None
@@ -63,11 +73,13 @@ def episodes(ctx: Context, state: State) -> State | InternalDirective:
             )
 
             if not chosen_episode_str or chosen_episode_str == "Back":
+                logger.debug("User selected Back from episode selection")
                 # TODO: should improve the back logic for menus that can be pass through
                 return InternalDirective.BACKX2
 
             chosen_episode = chosen_episode_str
 
+    logger.debug(f"Episodes menu complete. Transitioning to SERVERS with episode: {chosen_episode}")
     return State(
         menu_name=MenuName.SERVERS,
         media_api=state.media_api,

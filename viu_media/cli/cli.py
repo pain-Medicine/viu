@@ -73,7 +73,6 @@ def cli(ctx: click.Context, **options: "Unpack[Options]"):
     """
     The main entry point for the Viu CLI.
     """
-    setup_logging(options["log"])
     setup_exceptions_handler(
         options["trace"],
         options["dev"],
@@ -81,7 +80,6 @@ def cli(ctx: click.Context, **options: "Unpack[Options]"):
         options["rich_traceback_theme"],
     )
 
-    logger.info(f"Current Command: {' '.join(sys.argv)}")
     cli_overrides = {}
     param_lookup = {p.name: p for p in ctx.command.params}
 
@@ -109,6 +107,9 @@ def cli(ctx: click.Context, **options: "Unpack[Options]"):
         else loader.load(cli_overrides)
     )
     ctx.obj = config
+
+    setup_logging(options["log"], config.general.detailed_logging)
+    logger.info(f"Current Command: {' '.join(sys.argv)}")
 
     if config.general.welcome_screen:
         import time

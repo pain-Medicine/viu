@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING
+import logging
 
 import click
 
@@ -6,6 +7,8 @@ from ...core.config import AppConfig
 from ...core.exceptions import ViuError
 from ..utils.completion import anime_titles_shell_complete
 from . import examples
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -118,8 +121,10 @@ def download(config: AppConfig, **options: "Unpack[Options]"):
     selector = create_selector(config)
 
     anime_titles = options["anime_title"]
+    logger.debug(f"Download command initiated. Anime titles: {anime_titles}, Episode range: {options.get('episode_range')}")
     feedback.info(f"[green bold]Streaming:[/] {anime_titles}")
     for anime_title in anime_titles:
+        logger.debug(f"Processing download for anime: {anime_title}")
         # ---- search for anime ----
         feedback.info(f"[green bold]Searching for:[/] {anime_title}")
         with feedback.progress(f"Fetching anime search results for {anime_title}"):
@@ -128,7 +133,9 @@ def download(config: AppConfig, **options: "Unpack[Options]"):
                     query=anime_title, translation_type=config.stream.translation_type
                 )
             )
+        logger.debug(f"Search returned {len(search_results.results) if search_results else 0} results for '{anime_title}'")
         if not search_results:
+            logger.error(f"No results found for {anime_title}")
             raise ViuError("No results were found matching your query")
 
         _search_results = {
@@ -145,9 +152,11 @@ def download(config: AppConfig, **options: "Unpack[Options]"):
 
         # ---- fetch selected anime ----
         with feedback.progress(f"Fetching {anime_result.title}"):
+            logger.debug(f"Fetching details for anime ID: {anime_result.id}, Title: {anime_result.title}")
             anime = provider.get(AnimeParams(id=anime_result.id, query=anime_title))
 
         if not anime:
+            logger.error(f"Failed to fetch details for {anime_result.title}")
             raise ViuError(f"Failed to fetch anime {anime_result.title}")
 
         available_episodes: list[str] = sorted(
@@ -180,6 +189,7 @@ def download(config: AppConfig, **options: "Unpack[Options]"):
                 "Select Episode",
                 getattr(anime.episodes, config.stream.translation_type),
             )
+            logger.debug(f"User selected episode: {episode} for download")
             if not episode:
                 raise ViuError("No episode selected")
             download_anime(
@@ -207,6 +217,7 @@ def download_anime(
     from ...core.downloader import DownloadParams, create_downloader
     from ...libs.provider.anime.params import EpisodeStreamsParams
 
+    logger.debug(f"Starting download_anime for {anime.title}, episode {episode}")
     downloader = create_downloader(config.downloads)
 
     with feedback.progress("Fetching episode streams"):
@@ -218,7 +229,9 @@ def download_anime(
                 translation_type=config.stream.translation_type,
             )
         )
+        logger.debug(f"Fetched {len(streams) if streams else 0} streams for {anime.title} ep {episode}")
         if not streams:
+            logger.error(f"No streams found for {anime.title} ep {episode}")
             raise ViuError(
                 f"Failed to get streams for anime: {anime.title}, episode: {episode}"
             )
@@ -243,10 +256,14 @@ def download_anime(
             server = servers[server_name]
     stream_link = server.links[0].link
     if not stream_link:
+        logger.error("Failed to extract stream link from server object.")
         raise ViuError(
             f"Failed to get stream link for anime: {anime.title}, episode: {episode}"
         )
+    logger.debug(f"Selected stream link: {stream_link}")
     feedback.info(f"[green bold]Now Downloading:[/] {anime.title} Episode: {episode}")
+    
+    logger.debug("Handing off to downloader.download")
     downloader.download(
         DownloadParams(
             url=stream_link,
