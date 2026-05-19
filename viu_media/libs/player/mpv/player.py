@@ -37,7 +37,21 @@ class MpvPlayer(BasePlayer):
             config: MpvConfig object containing MPV-specific settings.
         """
         self.config = config
-        self.executable = shutil.which("mpv")
+        self.executable = self._find_executable(config.executable)
+
+    @staticmethod
+    def _find_executable(configured_path: str) -> str:
+        """Resolve the MPV executable path.
+
+        Priority:
+        1. Explicit path from config (``mpv.executable``)
+        2. ``shutil.which("mpv")`` — honours the current PATH
+        3. Bare ``"mpv"`` — lets the OS resolve it at subprocess time
+        """
+        if configured_path:
+            return configured_path
+
+        return shutil.which("mpv") or "mpv"
 
     def play(self, params):
         """
@@ -111,9 +125,6 @@ class MpvPlayer(BasePlayer):
         Returns:
             PlayerResult: Information about the playback session.
         """
-        if not self.executable:
-            raise ViuError("MPV executable not found in PATH.")
-
         if TORRENT_REGEX.search(params.url):
             return self._stream_on_desktop_with_webtorrent_cli(params)
         elif params.syncplay:

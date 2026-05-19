@@ -321,7 +321,7 @@ class WorkerConfig(OtherConfig):
         description="How often to process the failed download queue (in minutes).",
     )
     auto_download_new_episode: bool = Field(
-        default=True,
+        default=False,
         description="Whether to automatically download a new episode that has been notified",
     )
 
@@ -385,6 +385,10 @@ class MpvConfig(OtherConfig):
     pre_args: str = Field(
         default=defaults.MPV_PRE_ARGS,
         description=desc.MPV_PRE_ARGS,
+    )
+    executable: str = Field(
+        default=defaults.MPV_EXECUTABLE,
+        description=desc.MPV_EXECUTABLE,
     )
 
 

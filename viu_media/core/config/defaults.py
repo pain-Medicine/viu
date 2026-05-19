@@ -83,6 +83,7 @@ ROFI_THEME_PREVIEW = _ROFI_THEMES_DIR / "preview.rasi"
 # MpvConfig
 MPV_ARGS = ""
 MPV_PRE_ARGS = ""
+MPV_EXECUTABLE = ""
 
 # VlcConfig
 VLC_ARGS = ""

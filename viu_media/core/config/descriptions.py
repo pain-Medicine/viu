@@ -93,6 +93,7 @@ ROFI_THEME_INPUT = "Path to the Rofi theme file for user input prompts."
 # MpvConfig
 MPV_ARGS = "Comma-separated arguments to pass to the MPV player."
 MPV_PRE_ARGS = "Comma-separated arguments to prepend before the MPV command."
+MPV_EXECUTABLE = "Full path to the MPV executable. Leave empty to auto-detect from PATH."
 
 # VlcConfig
 VLC_ARGS = "Comma-separated arguments to pass to the Vlc player."
