@@ -20,6 +20,8 @@ from .mappers import (
     map_to_server,
 )
 
+from viu_media.core.security import check_response_size
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +40,7 @@ class AnimeUnity(BaseAnimeProvider):
             follow_redirects=True,
         )
         response.raise_for_status()
+        check_response_size(response, label="animeunity token page")
         token_match = TOKEN_REGEX.search(response.text)
         if token_match:
             self.HEADERS["x-csrf-token"] = token_match.group(1)
@@ -89,6 +92,7 @@ class AnimeUnity(BaseAnimeProvider):
             timeout=MAX_TIMEOUT,
         )
         response.raise_for_status()
+        check_response_size(response, label="animeunity info API")
         data = response.json()
 
         if res := map_to_search_result(data, None):
@@ -118,6 +122,7 @@ class AnimeUnity(BaseAnimeProvider):
                 timeout=MAX_TIMEOUT,
             )
             response.raise_for_status()
+            check_response_size(response, label="animeunity episode chunk")
             data.extend(response.json().get("episodes", []))
             start_range = end_range + 1
 
@@ -152,10 +157,12 @@ class AnimeUnity(BaseAnimeProvider):
             url=f"{ANIMEUNITY_BASE}/embed-url/{episode.id}", timeout=MAX_TIMEOUT
         )
         response.raise_for_status()
+        check_response_size(response, label="animeunity embed-url")
 
         # Fetch the Server page
         video_response = self.client.get(url=response.text.strip(), timeout=MAX_TIMEOUT)
         video_response.raise_for_status()
+        check_response_size(video_response, label="animeunity embed page")
 
         if not (info := extract_server_info(video_response.text, episode.title)):
             logger.error(f"Failed to extract video info for episode {episode.id}")

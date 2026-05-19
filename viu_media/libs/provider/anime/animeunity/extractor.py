@@ -1,10 +1,11 @@
 import logging
 
+from viu_media.core.security import parse_js_object, validate_url
+
 from .constants import (
     DOWNLOAD_FILENAME_REGEX,
     DOWNLOAD_URL_REGEX,
     QUALITY_REGEX,
-    VIDEO_INFO_CLEAN_REGEX,
     VIDEO_INFO_REGEX,
 )
 
@@ -22,17 +23,18 @@ def extract_server_info(html_content: str, episode_title: str | None) -> dict | 
     if not (download_url_match and video_info):
         return None
 
-    info_str = VIDEO_INFO_CLEAN_REGEX.sub(r'"\1"', video_info.group(1))
-
-    # Use eval context for JS constants
-    ctx = {"null": None, "true": True, "false": False}
     try:
-        info = eval(info_str, ctx)
-    except Exception as e:
-        logger.error(f"Failed to parse JS object: {e}")
+        info = parse_js_object(video_info.group(1))
+    except ValueError as e:
+        logger.error(f"Failed to parse video info: {e}")
         return None
 
-    download_url = download_url_match.group(1)
+    try:
+        download_url = validate_url(download_url_match.group(1))
+    except ValueError as e:
+        logger.error(f"Invalid download URL: {e}")
+        return None
+
     info["link"] = download_url
 
     # Extract metadata from download URL if missing in window.video

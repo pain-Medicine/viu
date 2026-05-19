@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 from viu_media.core.exceptions import DependencyNotFoundError
+from viu_media.core.security import validate_image
 import importlib.util
 
 import click
@@ -60,6 +61,12 @@ def resize_image_from_url(
             # Use the provided synchronous client
             response = client.get(url)
             response.raise_for_status()  # Raise an exception for bad status codes
+
+            try:
+                validate_image(response)
+            except ValueError as e:
+                logger.warning(f"Image validation failed for {url}: {e}")
+                return None
 
             image_bytes = response.content
             image_stream = BytesIO(image_bytes)
@@ -156,6 +163,13 @@ def render(url: str, capture: bool = False, size: str = "30x30") -> Optional[str
             with httpx.Client() as client:
                 response = client.get(url, follow_redirects=True, timeout=20)
                 response.raise_for_status()
+
+                try:
+                    validate_image(response)
+                except ValueError as e:
+                    logger.warning(f"Image validation failed for chafa render {url}: {e}")
+                    return None
+
                 img_bytes = response.content
 
             process = subprocess.run(

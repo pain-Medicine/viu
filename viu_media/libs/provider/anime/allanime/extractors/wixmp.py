@@ -1,7 +1,13 @@
+import logging
+
+from viu_media.core.security import check_response_size, validate_url
+
 from ...types import EpisodeStream, Server
 from ..constants import API_BASE_URL, API_GRAPHQL_REFERER
 from ..types import AllAnimeEpisodeStreams
 from .base import BaseExtractor
+
+logger = logging.getLogger(__name__)
 
 
 class DefaultExtractor(BaseExtractor):
@@ -12,16 +18,26 @@ class DefaultExtractor(BaseExtractor):
             timeout=10,
         )
         response.raise_for_status()
+        check_response_size(response, label="wixmp stream API")
         streams: AllAnimeEpisodeStreams = response.json()
         referer = response.json().get("Referer")
+
+        validated_links = []
+        for stream in streams["links"]:
+            try:
+                validated_links.append(
+                    EpisodeStream(
+                        link=validate_url(stream["link"]),
+                        quality="1080",
+                        format=stream["resolutionStr"],
+                    )
+                )
+            except ValueError as e:
+                logger.error(f"Invalid URL in wixmp stream: {e}")
+
         return Server(
             name="wixmp",
-            links=[
-                EpisodeStream(
-                    link=stream["link"], quality="1080", format=stream["resolutionStr"]
-                )
-                for stream in streams["links"]
-            ],
+            links=validated_links,
             episode_title=episode["notes"],
             headers={"Referer": referer} if referer else {},
         )

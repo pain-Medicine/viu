@@ -210,3 +210,4 @@ repomix-output.xml
 .project/
 result
 .direnv
+tests/

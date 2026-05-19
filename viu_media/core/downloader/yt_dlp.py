@@ -11,6 +11,7 @@ from rich.prompt import Confirm
 
 import yt_dlp
 from yt_dlp.utils import sanitize_filename
+from ..security import validate_subtitle
 from ..utils.detect import get_clean_env
 from ..exceptions import ViuError
 from ..patterns import TORRENT_REGEX
@@ -162,6 +163,12 @@ class YtDLPDownloader(BaseDownloader):
                 response.raise_for_status()
             except httpx.HTTPError:
                 raise ViuError("Failed to download sub: {e}")
+
+            try:
+                validate_subtitle(response)
+            except ValueError as e:
+                logger.error(f"Subtitle validation failed for {sub}: {e}")
+                continue
 
             filename = get_remote_filename(response)
             if not filename:

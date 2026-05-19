@@ -3,6 +3,8 @@ from functools import lru_cache
 from typing import Iterator, Optional
 from urllib.parse import urlparse
 
+from viu_media.core.security import check_response_size, validate_url
+
 from ..base import BaseAnimeProvider
 from ..params import AnimeParams, EpisodeStreamsParams, SearchParams
 from ..types import Anime, AnimeEpisodeInfo, SearchResult, SearchResults, Server
@@ -35,6 +37,7 @@ class AnimePahe(BaseAnimeProvider):
         url_params = {"m": "search", "q": params.query}
         response = self.client.get(ANIMEPAHE_ENDPOINT, params=url_params)
         response.raise_for_status()
+        check_response_size(response, label="animepahe search")
         data: AnimePaheSearchPage = response.json()
         if not data.get("data"):
             return
@@ -105,6 +108,7 @@ class AnimePahe(BaseAnimeProvider):
         }
         response = self.client.get(ANIMEPAHE_ENDPOINT, params=url_params)
         response.raise_for_status()
+        check_response_size(response, label="animepahe page")
         return response.json()
 
     @debug_provider
@@ -125,6 +129,7 @@ class AnimePahe(BaseAnimeProvider):
         url = f"{ANIMEPAHE_BASE}/play/{params.anime_id}/{episode.session_id}"
         response = self.client.get(url, follow_redirects=True)
         response.raise_for_status()
+        check_response_size(response, label="animepahe episode page")
 
         c = get_element_by_id("resolutionMenu", response.text)
         if not c:
@@ -160,6 +165,7 @@ class AnimePahe(BaseAnimeProvider):
                 },
             )
             embed_response.raise_for_status()
+            check_response_size(embed_response, label="animepahe embed page")
             embed_page = embed_response.text
             logger.debug("Processing embed page for JS decoding")
 
@@ -174,6 +180,11 @@ class AnimePahe(BaseAnimeProvider):
                 continue
             logger.debug(f"Found juicy stream: {juicy_stream.group(1)}")
             juicy_stream = juicy_stream.group(1)
+            try:
+                juicy_stream = validate_url(juicy_stream)
+            except ValueError as e:
+                logger.error(f"Invalid stream URL from animepahe: {e}")
+                continue
             stream_host = urlparse(juicy_stream).hostname
             quality = res_dict["resolution"]
             logger.debug(f"Found quality: {quality}")

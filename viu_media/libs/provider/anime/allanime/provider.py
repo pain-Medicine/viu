@@ -1,6 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
+from viu_media.core.security import check_response_size
 from .....core.utils.graphql import execute_graphql
 from ..base import BaseAnimeProvider
 from ..utils.debug import debug_provider
@@ -106,6 +107,7 @@ class AllAnime(BaseAnimeProvider):
             )
 
         try:
+            check_response_size(episode_response, label="allanime episode GraphQL")
             data = episode_response.json().get("data", {})
             if "episode" in data and data["episode"]:
                 episode = data["episode"]
