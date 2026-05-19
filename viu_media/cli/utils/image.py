@@ -2,7 +2,7 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from viu_media.core.exceptions import DependencyNotFoundError
 import importlib.util
 
@@ -10,6 +10,9 @@ import click
 import httpx
 
 from viu_media.core.utils import detect
+
+if TYPE_CHECKING:
+    from viu_media.libs.media_api.types import MediaItem
 
 logger = logging.getLogger(__name__)
 
@@ -184,4 +187,35 @@ def render(url: str, capture: bool = False, size: str = "30x30") -> Optional[str
             "[dim](Image preview skipped: icat or chafa not found)[/dim]", err=True
         )
 
+    return None
+
+
+def fetch_media_icon(media_item: "MediaItem", cache_dir: Path) -> Optional[Path]:
+    """Fetch and cache a cover image for use in desktop notifications.
+
+    Downloads once, returns the cached path on subsequent calls.
+    Returns None if the media has no cover URL or the download fails.
+    """
+    try:
+        cover = media_item.cover_image
+        url = None
+        if cover:
+            url = cover.extra_large or cover.large or cover.medium
+        if not url:
+            return None
+
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        icon_path = cache_dir / f"{media_item.id}.png"
+        if icon_path.exists() and icon_path.stat().st_size > 0:
+            return icon_path
+
+        with httpx.Client(follow_redirects=True, timeout=20) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            data = resp.content
+            if data:
+                icon_path.write_bytes(data)
+                return icon_path
+    except Exception as e:
+        logger.debug(f"Could not fetch icon for media {media_item.id}: {e}")
     return None

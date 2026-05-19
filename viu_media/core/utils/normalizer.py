@@ -6,8 +6,10 @@ from ..constants import APP_DATA_DIR, ASSETS_DIR
 
 logger = logging.getLogger(__name__)
 
-# Cache for the normalizer data to avoid repeated file reads
+# Forward cache: {provider: {provider_title: api_title}}
 _normalizer_cache: Optional[Dict[str, Dict[str, str]]] = None
+# Reverse cache: {provider: {api_title: provider_title}} — built once alongside forward map
+_reverse_normalizer_cache: Optional[Dict[str, Dict[str, str]]] = None
 
 USER_NORMALIZER_JSON = APP_DATA_DIR / "normalizer.json"
 
@@ -26,7 +28,7 @@ def _load_normalizer_data() -> Dict[str, Dict[str, str]]:
         FileNotFoundError: If normalizer.json is not found
         json.JSONDecodeError: If normalizer.json is malformed
     """
-    global _normalizer_cache
+    global _normalizer_cache, _reverse_normalizer_cache
 
     if _normalizer_cache is not None:
         return _normalizer_cache
@@ -44,6 +46,13 @@ def _load_normalizer_data() -> Dict[str, Dict[str, str]]:
         if key in user_normalizer:
             _normalizer_cache[key].update(user_normalizer[key])
 
+    # Build the reverse map once so media_api_title_to_provider_title()
+    # doesn't reconstruct {v: k} on every call.
+    _reverse_normalizer_cache = {
+        provider: {api_title: prov_title for prov_title, api_title in mappings.items()}
+        for provider, mappings in _normalizer_cache.items()
+    }
+
     return _normalizer_cache
 
 
@@ -53,20 +62,26 @@ def update_user_normalizer_json(
     from .file import AtomicWriter
 
     logger.debug(f"Silently updating fallback normalizer.json with mapping for {provider_name}")
-    global _normalizer_cache
+    global _normalizer_cache, _reverse_normalizer_cache
     if _normalizer_cache is None:
         try:
             _load_normalizer_data()
         except Exception:
             pass
-            
+
     if _normalizer_cache is None:
         _normalizer_cache = {}
-        
+    if _reverse_normalizer_cache is None:
+        _reverse_normalizer_cache = {}
+
     if provider_name not in _normalizer_cache:
         _normalizer_cache[provider_name] = {}
+    if provider_name not in _reverse_normalizer_cache:
+        _reverse_normalizer_cache[provider_name] = {}
 
-    _normalizer_cache[provider_name][provider_title] = media_api_title.lower()
+    normalized = media_api_title.lower()
+    _normalizer_cache[provider_name][provider_title] = normalized
+    _reverse_normalizer_cache[provider_name][normalized] = provider_title
     with AtomicWriter(USER_NORMALIZER_JSON) as f:
         json.dump(_normalizer_cache, f, indent=2)
 
@@ -145,20 +160,15 @@ def media_api_title_to_provider_title(media_api_title: str, provider_name: str) 
         "Unknown Title"
     """
     try:
-        normalizer_data = _load_normalizer_data()
+        _load_normalizer_data()  # ensures both caches are populated
 
-        # Check if the provider exists in the normalizer data
-        if provider_name not in normalizer_data:
-            logger.debug("Provider '%s' not found in normalizer data", provider_name)
+        if _reverse_normalizer_cache is None or provider_name not in _reverse_normalizer_cache:
+            logger.debug("Provider '%s' not found in reverse normalizer cache", provider_name)
             return media_api_title
 
-        provider_mappings = normalizer_data[provider_name]
-
-        # Create a reverse mapping (media_api_title -> provider_title)
-        reverse_mappings = {v: k for k, v in provider_mappings.items()}
-
-        # Return the mapped title if it exists, otherwise return the original
-        provider_title = reverse_mappings.get(media_api_title, media_api_title)
+        provider_title = _reverse_normalizer_cache[provider_name].get(
+            media_api_title, media_api_title
+        )
 
         if provider_title != media_api_title:
             logger.debug(
@@ -231,8 +241,9 @@ def clear_cache() -> None:
     This is useful for testing or when the normalizer.json file has been updated
     and you want to reload the data.
     """
-    global _normalizer_cache
+    global _normalizer_cache, _reverse_normalizer_cache
     _normalizer_cache = None
+    _reverse_normalizer_cache = None
     logger.debug("Cleared normalizer cache")
 
 
@@ -326,12 +337,15 @@ def add_runtime_mapping(
     try:
         normalizer_data = _load_normalizer_data()
 
-        # Initialize provider if it doesn't exist
         if provider_name not in normalizer_data:
             normalizer_data[provider_name] = {}
+        if _reverse_normalizer_cache is not None and provider_name not in _reverse_normalizer_cache:
+            _reverse_normalizer_cache[provider_name] = {}
 
-        # Add the mapping
-        normalizer_data[provider_name][provider_title] = media_api_title
+        normalized = media_api_title.lower()
+        normalizer_data[provider_name][provider_title] = normalized
+        if _reverse_normalizer_cache is not None:
+            _reverse_normalizer_cache[provider_name][normalized] = provider_title
 
         logger.info(
             "Added runtime mapping: '%s' -> '%s' (provider: %s)",

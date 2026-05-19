@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Generator, List, Optional, TypedDict
@@ -43,6 +44,10 @@ class MediaRegistryService:
         self._index_file_modified_time = 0
         _lock_file = self.config.media_dir / "registry.lock"
         self._lock = FileLock(_lock_file)
+        # In-process reentrant lock for _load_index — the FileLock is
+        # file-based and non-reentrant, so it cannot guard reads that
+        # may internally call _save_index (which also acquires _lock).
+        self._index_rlock = threading.RLock()
 
     def _ensure_directories(self) -> None:
         """Ensure registry directories exist."""
@@ -54,27 +59,28 @@ class MediaRegistryService:
 
     def _load_index(self) -> MediaRegistryIndex:
         """Load or create the registry index."""
-        self._index_file_modified_time, is_modified = check_file_modified(
-            self._index_file, self._index_file_modified_time
-        )
-        if not is_modified and self._index is not None:
-            return self._index
-        if self._index_file.exists():
-            with self._index_file.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-            self._index = MediaRegistryIndex.model_validate(data)
-        else:
-            self._index = MediaRegistryIndex()
-            self._save_index(self._index)
-
-        # check if there was a major change in the registry
-        if self._index.version[0] != REGISTRY_VERSION[0]:
-            raise ViuError(
-                f"Incompatible registry version of {self._index.version}. Current registry supports version {REGISTRY_VERSION}. Please migrate your registry using the migrator"
+        with self._index_rlock:
+            self._index_file_modified_time, is_modified = check_file_modified(
+                self._index_file, self._index_file_modified_time
             )
+            if not is_modified and self._index is not None:
+                return self._index
+            if self._index_file.exists():
+                with self._index_file.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self._index = MediaRegistryIndex.model_validate(data)
+            else:
+                self._index = MediaRegistryIndex()
+                self._save_index(self._index)
 
-        logger.debug(f"Loaded registry index with {self._index.media_count} entries")
-        return self._index
+            # check if there was a major change in the registry
+            if self._index.version[0] != REGISTRY_VERSION[0]:
+                raise ViuError(
+                    f"Incompatible registry version of {self._index.version}. Current registry supports version {REGISTRY_VERSION}. Please migrate your registry using the migrator"
+                )
+
+            logger.debug(f"Loaded registry index with {self._index.media_count} entries")
+            return self._index
 
     def _save_index(self, index: MediaRegistryIndex):
         """Save the registry index."""
@@ -105,7 +111,8 @@ class MediaRegistryService:
         if not record_file.exists():
             return None
 
-        data = json.load(record_file.open(mode="r", encoding="utf-8"))
+        with record_file.open(mode="r", encoding="utf-8") as f:
+            data = json.load(f)
 
         record = MediaRecord.model_validate(data)
 
@@ -175,7 +182,14 @@ class MediaRegistryService:
             self.get_or_create_record(media_item)
 
         index = self._load_index()
-        index_entry = index.media_index[f"{self._media_api}_{media_id}"]
+        index_entry = index.media_index.get(f"{self._media_api}_{media_id}")
+        if not index_entry:
+            logger.error(
+                "Cannot update index entry for media_id=%s: entry not found. "
+                "Ensure get_or_create_record was called first.",
+                media_id,
+            )
+            return
 
         if progress:
             index_entry.progress = progress
@@ -221,15 +235,20 @@ class MediaRegistryService:
         sorted_entries = sorted(
             index.media_index.values(), key=lambda x: x.last_watched, reverse=True
         )
+        total = len(sorted_entries)
+
+        # Apply the limit before hitting disk — the sort is done entirely from
+        # the in-memory index, so we only read the N records we actually need.
+        if limit is not None:
+            sorted_entries = sorted_entries[:limit]
 
         recent_media: List[MediaItem] = []
         for entry in sorted_entries:
             record = self.get_media_record(entry.media_id)
             if record:
                 recent_media.append(record.media_item)
-        page_info = PageInfo(
-            total=len(sorted_entries),
-        )
+
+        page_info = PageInfo(total=total)
         return MediaSearchResult(page_info=page_info, media=recent_media)
 
     def search_for_media(self, params: MediaSearchParams) -> MediaSearchResult:
@@ -454,17 +473,13 @@ class MediaRegistryService:
                 # Create UserListItem from index entry
                 media_list.append(record.media_item)
 
-        # Sort by last watched
+        # Sort by last watched — build lookup dict first to avoid O(n²)
+        last_watched_lookup = {
+            entry.media_id: entry.last_watched for entry in index.media_index.values()
+        }
         sorted_media = sorted(
             media_list,
-            key=lambda media_item: next(
-                (
-                    entry.last_watched
-                    for entry in index.media_index.values()
-                    if entry.media_id == media_item.id
-                ),
-                datetime.min,
-            ),
+            key=lambda m: last_watched_lookup.get(m.id, datetime.min),
             reverse=True,
         )
 

@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
+from viu_media.cli.utils.image import fetch_media_icon
 from viu_media.cli.utils.search import find_best_match_title
 
 from ....core.config.model import AppConfig
@@ -302,7 +303,7 @@ class DownloadService:
                 try:
                     from plyer import notification
 
-                    icon_path = self._get_or_fetch_icon(media_item)
+                    icon_path = fetch_media_icon(media_item, NOTIFICATION_ICONS_CACHE_DIR)
                     app_icon = str(icon_path) if icon_path else None
 
                     notification.notify(  # type: ignore
@@ -312,8 +313,8 @@ class DownloadService:
                         app_icon=app_icon,
                         timeout=self.app_config.general.desktop_notification_duration,
                     )
-                except:  # noqa: E722
-                    pass
+                except Exception:
+                    logger.debug("Desktop notification failed", exc_info=True)
                 logger.info(message)
             else:
                 logger.error(f"Download failed inside downloader logic: {result.error_message}")
@@ -324,7 +325,7 @@ class DownloadService:
             try:
                 from plyer import notification
 
-                icon_path = self._get_or_fetch_icon(media_item)
+                icon_path = fetch_media_icon(media_item, NOTIFICATION_ICONS_CACHE_DIR)
                 app_icon = str(icon_path) if icon_path else None
 
                 notification.notify(  # type: ignore
@@ -334,8 +335,8 @@ class DownloadService:
                     app_icon=app_icon,
                     timeout=self.app_config.general.desktop_notification_duration,
                 )
-            except:  # noqa: E722
-                pass
+            except Exception:
+                logger.debug("Desktop notification failed", exc_info=True)
             logger.error(
                 message,
                 exc_info=True,
@@ -353,32 +354,3 @@ class DownloadService:
             except Exception:
                 pass
 
-    def _get_or_fetch_icon(self, media_item: MediaItem) -> Path | None:
-        """Fetch and cache a small cover image for system notifications."""
-        import httpx
-
-        try:
-            cover = media_item.cover_image
-            url = None
-            if cover:
-                url = cover.extra_large or cover.large or cover.medium
-            if not url:
-                return None
-
-            cache_dir = NOTIFICATION_ICONS_CACHE_DIR
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            icon_path = cache_dir / f"{media_item.id}.png"
-            if icon_path.exists() and icon_path.stat().st_size > 0:
-                return icon_path
-
-            # Directly download the image bytes without resizing
-            with httpx.Client(follow_redirects=True, timeout=20) as client:
-                resp = client.get(url)
-                resp.raise_for_status()
-                data = resp.content
-                if data:
-                    icon_path.write_bytes(data)
-                    return icon_path
-        except Exception as e:
-            logger.debug(f"Could not fetch icon for media {media_item.id}: {e}")
-        return None

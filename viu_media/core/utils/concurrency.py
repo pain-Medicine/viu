@@ -147,8 +147,11 @@ class BackgroundWorker(ABC):
             if self._executor is None:
                 raise RuntimeError(f"Worker {self.name} executor is not initialized")
 
+            # Prune completed/cancelled tasks to keep the list bounded
+            self._tasks = [t for t in self._tasks if not t.completed() and not t.cancelled()]
             self._tasks.append(task)
             future = self._executor.submit(task.execute)
+            future.add_done_callback(lambda f: self._on_task_completed(task, f))
             self._futures.add(future)
 
             logger.debug(f"Submitted task to worker {self.name}")
@@ -210,25 +213,35 @@ class BackgroundWorker(ABC):
             if self._executor is None:
                 return
 
-            logger.debug(f"Shutting down worker {self.name}")
-
-            if not wait:
-                # Cancel all tasks and shutdown immediately
-                self.cancel_all_tasks()
-                self._executor.shutdown(wait=False, cancel_futures=True)
-            else:
-                # Wait for tasks to complete with timeout
-                try:
-                    self._executor.shutdown(wait=True)
-                except TimeoutError:
-                    logger.warning(
-                        f"Worker {self.name} shutdown timed out, forcing cancellation"
-                    )
-                    self.cancel_all_tasks()
-                    self._executor.shutdown(wait=False, cancel_futures=True)
-
+            # Capture and clear the executor reference under the lock so
+            # concurrent submit_task calls fail fast from this point on.
+            executor = self._executor
             self._executor = None
-            logger.debug(f"Worker {self.name} shutdown complete")
+
+        # Perform the actual shutdown outside the lock so other threads
+        # are not blocked for the full duration of the wait.
+        logger.debug(f"Shutting down worker {self.name}")
+
+        if not wait:
+            self.cancel_all_tasks()
+            executor.shutdown(wait=False, cancel_futures=True)
+        else:
+            # ThreadPoolExecutor.shutdown(wait=True) blocks indefinitely and
+            # never raises TimeoutError, so we apply the timeout via a daemon
+            # thread join — if it outlives the timeout we force-cancel.
+            shutdown_thread = threading.Thread(
+                target=executor.shutdown, kwargs={"wait": True}, daemon=True
+            )
+            shutdown_thread.start()
+            shutdown_thread.join(timeout=timeout)
+            if shutdown_thread.is_alive():
+                logger.warning(
+                    f"Worker {self.name} shutdown timed out after {timeout}s, forcing cancellation"
+                )
+                self.cancel_all_tasks()
+                executor.shutdown(wait=False, cancel_futures=True)
+
+        logger.debug(f"Worker {self.name} shutdown complete")
 
     def is_running(self) -> bool:
         """Check if the worker is currently running."""
@@ -275,11 +288,15 @@ class ManagedBackgroundWorker(BackgroundWorker):
     def _on_task_completed(self, task: WorkerTask, future: Future) -> None:
         """Track completed tasks and log results."""
         try:
-            if future.exception():
-                self._failed_tasks.append(task)
-                logger.error(f"Task failed in worker {self.name}: {future.exception()}")
+            exc = future.exception()
+            with self._lock:
+                if exc:
+                    self._failed_tasks.append(task)
+                else:
+                    self._completed_tasks.append(task)
+            if exc:
+                logger.error(f"Task failed in worker {self.name}: {exc}")
             else:
-                self._completed_tasks.append(task)
                 logger.debug(f"Task completed successfully in worker {self.name}")
         except Exception as e:
             logger.error(f"Error in task completion handler: {e}")
@@ -307,17 +324,30 @@ class ThreadManager:
         self._workers: Dict[str, BackgroundWorker] = {}
         self._lock = threading.RLock()
 
-    def register_worker(self, name: str, worker: BackgroundWorker) -> None:
+    def register_worker(
+        self, name: str, worker: BackgroundWorker, replace: bool = False
+    ) -> None:
         """
         Register a background worker.
 
         Args:
             name: Unique name for the worker
             worker: The worker instance to register
+            replace: If True, shut down and replace any existing worker with this name.
+                     If False (default), log a warning and return without replacing.
         """
         with self._lock:
             if name in self._workers:
-                raise ValueError(f"Worker with name '{name}' already registered")
+                if replace:
+                    existing = self._workers[name]
+                    if existing.is_running():
+                        existing.shutdown(wait=False)
+                    logger.warning(f"Replacing existing worker: {name}")
+                else:
+                    logger.warning(
+                        f"Worker '{name}' already registered; skipping re-registration"
+                    )
+                    return
             self._workers[name] = worker
             logger.debug(f"Registered worker: {name}")
 
