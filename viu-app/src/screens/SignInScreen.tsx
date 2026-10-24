@@ -19,7 +19,6 @@ import { Text } from '../ui/Text';
 export function SignInScreen() {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
   const { signIn } = useAccount();
 
@@ -43,16 +42,12 @@ export function SignInScreen() {
 
   const step = (n: string, title: string, body: string) => (
     <View style={{ flexDirection: 'row', gap: 22 }}>
-      <Text variant={graphic ? 'display' : 'bodyBold'} size={graphic ? 48 : 32} color={c.primary} style={{ width: 52 }}>
+      <Text variant="numeral" color={c.primary} style={{ width: 52 }}>
         {n}
       </Text>
       <View style={{ flex: 1, gap: 6 }}>
-        <Text variant="title" size={graphic ? 32 : 26}>
-          {title}
-        </Text>
-        <Text size={20} color={c.textMuted}>
-          {body}
-        </Text>
+        <Text variant="item">{title}</Text>
+        <Text color={c.textMuted}>{body}</Text>
       </View>
     </View>
   );
@@ -61,10 +56,8 @@ export function SignInScreen() {
     <View style={StyleSheet.absoluteFill}>
       <FrameMarks crumb="VIU.TV / SETTINGS / ANILIST" />
       <View style={{ position: 'absolute', top: 90, left: 80, right: 80, gap: 14 }}>
-        <Text variant="display" size={graphic ? 110 : 72}>
-          Sign in to AniList
-        </Text>
-        <Text size={22} color={c.textMuted}>
+        <Text variant="page">Sign in to AniList</Text>
+        <Text variant="bodyLg" color={c.textMuted}>
           Viu reads your lists and marks episodes watched. It never sees your password.
         </Text>
       </View>
@@ -100,7 +93,7 @@ export function SignInScreen() {
               height: 64,
               paddingHorizontal: 22,
               fontFamily: theme.fonts.body,
-              fontSize: 22,
+              fontSize: 24,
               color: c.text,
               backgroundColor: c.chrome,
               borderRadius: Math.min(theme.shape.button, 32),
@@ -108,10 +101,10 @@ export function SignInScreen() {
               borderColor: focused ? c.focus : c.outline,
             }}
           />
-          <Button variant="primary" label={busy ? 'Checking…' : 'Sign in'} onPress={busy ? undefined : submit} />
+          <Button variant="primary" label={busy ? 'Checking…' : 'Sign in'} disabled={busy || !token.trim()} onPress={submit} />
         </View>
         {error && (
-          <Text size={20} color={c.accent} style={{ marginLeft: 74 }}>
+          <Text variant="bodyBold" color={c.accent} style={{ marginLeft: 74 }}>
             {error}
           </Text>
         )}
@@ -119,7 +112,7 @@ export function SignInScreen() {
 
       <Panel style={{ position: 'absolute', top: 330, right: 80, width: 560, padding: 40, gap: 24, alignItems: 'center' }}>
         <QrCode value={ANILIST_AUTH_URL} size={380} />
-        <Text variant="label" size={graphic ? 14 : 17} color={c.featureMuted} style={{ textAlign: 'center' }} selectable>
+        <Text variant="label" color={c.featureMuted} style={{ textAlign: 'center' }} selectable>
           {ANILIST_AUTH_URL.replace('https://', '')}
         </Text>
       </Panel>

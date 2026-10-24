@@ -20,12 +20,11 @@ import { TopNav } from '../ui/TopNav';
 export function SettingsScreen() {
   const { theme, settings, update } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const proxy = process.env.EXPO_PUBLIC_PROVIDER_PROXY;
   const nav = useNav();
   const { account, signOut } = useAccount();
   const note = (text: string) => (
-    <Text variant="label" size={graphic ? 14 : 18} color={c.textMuted} style={{ marginLeft: 12, flexShrink: 1 }}>
+    <Text variant="label" color={c.textMuted} style={{ marginLeft: 12, flexShrink: 1 }}>
       {text}
     </Text>
   );
@@ -40,9 +39,7 @@ export function SettingsScreen() {
         contentContainerStyle={{ paddingTop: 20, paddingHorizontal: 80, paddingBottom: 120, gap: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        <Text variant="display" size={graphic ? 110 : 72}>
-          Settings
-        </Text>
+        <Text variant="page">Settings</Text>
 
         <Section label="Theme" index="01">
           <View style={{ flexDirection: 'row', gap: 32 }}>
@@ -78,8 +75,8 @@ export function SettingsScreen() {
             <View style={{ flexDirection: 'row', gap: 20, alignItems: 'center' }}>
               <Art uri={account.user.avatar} style={{ width: 64, height: 64, borderRadius: theme.shape.button }} />
               <View style={{ gap: 4 }}>
-                <Text variant="bodyBold" size={24}>{account.user.name}</Text>
-                <Text variant="label" size={graphic ? 14 : 18} color={c.textMuted}>
+                <Text variant="bodyBold">{account.user.name}</Text>
+                <Text variant="label" color={c.textMuted}>
                   My List and watched episodes sync to this account.
                 </Text>
               </View>
@@ -97,7 +94,7 @@ export function SettingsScreen() {
         <NetworkSection />
 
         <Section label="About" index="05">
-          <Text color={c.textMuted} size={20}>
+          <Text color={c.textMuted}>
             {`Viu 1.0  ·  Metadata from AniList  ·  Streams from AllAnime  ·  Skip times from AniSkip`}
             {Platform.OS === 'web' ? `  ·  ${proxy ? 'Provider proxy on' : 'No provider proxy, so streaming is off in the browser'}` : ''}
           </Text>
@@ -110,14 +107,13 @@ export function SettingsScreen() {
 function NetworkSection() {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
   const { supported, settings, status, update } = useNetwork();
   const [proxy, setProxy] = useState(settings.proxy);
   const [focused, setFocused] = useState(false);
   const [check, setCheck] = useState<string | null>(null);
   const note = (text: string, color = c.textMuted) => (
-    <Text variant="label" size={graphic ? 14 : 18} color={color} style={{ marginLeft: 12, flexShrink: 1 }}>
+    <Text variant="label" color={color} style={{ marginLeft: 12, flexShrink: 1 }}>
       {text}
     </Text>
   );
@@ -168,7 +164,7 @@ function NetworkSection() {
                 height: 64,
                 paddingHorizontal: 22,
                 fontFamily: theme.fonts.body,
-                fontSize: 22,
+                fontSize: 24,
                 color: c.text,
                 backgroundColor: c.chrome,
                 borderRadius: Math.min(theme.shape.button, 32),
@@ -213,13 +209,11 @@ function Section({ label, index, children }: { label: string; index: string; chi
       <View style={{ width: 260, gap: 10, paddingTop: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           {theme.decor.indexLabels && (
-            <Text variant="labelBold" size={14} color={c.primary}>
+            <Text variant="metaBold" color={c.primary}>
               {index}
             </Text>
           )}
-          <Text variant="title" size={theme.panel === 'solid' ? 36 : 28}>
-            {label}
-          </Text>
+          <Text variant="section">{label}</Text>
         </View>
         <Hazard color={c.outline} style={{ width: 160 }} />
       </View>
@@ -243,9 +237,15 @@ function ThemeCard({
 }) {
   const { theme } = useSettings();
   const o = option.colors;
-  const solid = option.panel === 'solid';
+  const button = { minHeight: 52, paddingHorizontal: 26, justifyContent: 'center' as const };
   return (
-    <Focusable onPress={onPress} autoFocus={autoFocus} radius={theme.shape.radiusLg} accessibilityLabel={`${option.name} theme`}>
+    <Focusable
+      onPress={onPress}
+      autoFocus={autoFocus}
+      selected={selected}
+      radius={theme.shape.radiusLg}
+      accessibilityLabel={`${option.name} theme`}
+    >
       <View
         style={{
           width: 560,
@@ -259,20 +259,37 @@ function ThemeCard({
           gap: 16,
         }}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <Text
-            style={{
-              fontFamily: option.fonts.display,
-              fontSize: solid ? 52 : 44,
-              lineHeight: solid ? 50 : 48,
-              letterSpacing: solid ? 1 : -1.6,
-              textTransform: solid ? 'uppercase' : 'none',
-            }}
+            theme={option}
+            variant="headline"
+            size={Math.round(option.text.headline.size * 0.7)}
             color={o.text}
             numberOfLines={1}
+            style={{ flexShrink: 1 }}
           >
             {option.name}
           </Text>
+        </View>
+        <Text theme={option} color={o.textMuted}>
+          {option.description}
+        </Text>
+        <View style={{ flex: 1 }} />
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+          {option.shape.chamfer > 0 ? (
+            <ChamferBox color={o.primary} cut={14} style={button}>
+              <Text theme={option} variant="button" size={Math.round(20 * option.buttonScale)} color={o.onPrimary}>
+                Play E1
+              </Text>
+            </ChamferBox>
+          ) : (
+            <View style={[button, { borderRadius: option.shape.button, backgroundColor: o.primary }]}>
+              <Text theme={option} variant="button" size={Math.round(20 * option.buttonScale)} color={o.onPrimary}>
+                Play E1
+              </Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }} />
           {selected && (
             <View
               style={{
@@ -280,47 +297,27 @@ function ThemeCard({
                 alignItems: 'center',
                 gap: 6,
                 paddingHorizontal: 12,
-                height: 36,
+                minHeight: 36,
                 borderRadius: option.shape.chip,
                 backgroundColor: o.selected,
               }}
             >
-              <Icon name="check" size={16} color={o.onSelected} square={solid} />
-              <Text style={{ fontFamily: option.fonts.labelBold, fontSize: 15, letterSpacing: option.type.labelTracking }} color={o.onSelected}>
-                {solid ? 'IN USE' : 'In use'}
+              <Icon name="check" size={18} color={o.onSelected} square={option.shape.squareIcons} />
+              <Text theme={option} variant="metaBold" color={o.onSelected}>
+                In use
               </Text>
             </View>
           )}
-        </View>
-        <Text style={{ fontFamily: option.fonts.body, fontSize: 20, lineHeight: 28 }} color={o.textMuted}>
-          {option.description}
-        </Text>
-        <View style={{ flex: 1 }} />
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          {solid ? (
-            <ChamferBox color={o.primary} cut={14} style={{ height: 52, paddingHorizontal: 26, justifyContent: 'center' }}>
-              <Text style={{ fontFamily: option.fonts.display, fontSize: 26, letterSpacing: 1.5 }} color={o.onPrimary}>
-                PLAY E1
-              </Text>
-            </ChamferBox>
-          ) : (
-            <View style={{ height: 52, paddingHorizontal: 26, borderRadius: 999, backgroundColor: o.primary, justifyContent: 'center' }}>
-              <Text style={{ fontFamily: option.fonts.title, fontSize: 20 }} color={o.onPrimary}>
-                Play E1
-              </Text>
-            </View>
-          )}
-          <View style={{ flex: 1 }} />
           {[o.primary, o.accent, o.featureBg, o.text].map((swatch, i) => (
             <View
               key={i}
               style={{
                 width: 36,
                 height: 36,
-                borderRadius: solid ? 0 : 18,
+                borderRadius: option.shape.chip ? 18 : 0,
                 backgroundColor: swatch,
                 borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.18)',
+                borderColor: theme.colors.outline,
               }}
             />
           ))}

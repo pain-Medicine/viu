@@ -1,4 +1,6 @@
 // Minimal AniList GraphQL client. AniList allows CORS, so this works on web too.
+import { HttpError, reach } from '../lib/errors';
+
 const ENDPOINT = 'https://graphql.anilist.co';
 
 export interface Media {
@@ -54,18 +56,21 @@ const CARD_FIELDS = `
 `;
 
 async function query<T>(gql: string, variables: Record<string, unknown> = {}, token?: string): Promise<T> {
-  const response = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ query: gql, variables }),
-  });
-  const json = (await response.json()) as { data?: T; errors?: { message: string }[] };
+  const response = await reach('AniList', () =>
+    fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ query: gql, variables }),
+    }),
+  );
+  // Outages answer with an HTML page, not JSON.
+  const json = (await response.json().catch(() => ({}))) as { data?: T; errors?: { message: string }[] };
   if (!response.ok || !json.data) {
-    throw new Error(json.errors?.[0]?.message ?? `AniList request failed (${response.status})`);
+    throw new HttpError('AniList', response.status, json.errors?.[0]?.message);
   }
   return json.data;
 }
@@ -163,8 +168,24 @@ export function plainDescription(media: Media): string {
 
 // Every genre AniList uses for anime, in its own order.
 export const GENRES = [
-  'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy', 'Horror', 'Mahou Shoujo', 'Mecha', 'Music',
-  'Mystery', 'Psychological', 'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
+  'Action',
+  'Adventure',
+  'Comedy',
+  'Drama',
+  'Ecchi',
+  'Fantasy',
+  'Horror',
+  'Mahou Shoujo',
+  'Mecha',
+  'Music',
+  'Mystery',
+  'Psychological',
+  'Romance',
+  'Sci-Fi',
+  'Slice of Life',
+  'Sports',
+  'Supernatural',
+  'Thriller',
 ];
 
 export interface Airing {
@@ -265,10 +286,7 @@ export async function listEntry(token: string, mediaId: number): Promise<ListEnt
   return data.Media.mediaListEntry;
 }
 
-export async function saveListEntry(
-  token: string,
-  entry: { mediaId: number; status?: ListStatus; progress?: number },
-): Promise<ListEntry> {
+export async function saveListEntry(token: string, entry: { mediaId: number; status?: ListStatus; progress?: number }): Promise<ListEntry> {
   const data = await query<{ SaveMediaListEntry: ListEntry }>(
     `mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int) {
       SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress) { id status progress }

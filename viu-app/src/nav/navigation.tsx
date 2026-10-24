@@ -24,7 +24,11 @@ interface NavContextValue {
   back: () => boolean;
   // Top-level sections reset the stack instead of growing it.
   goTo: (route: Route) => void;
+  // Back was pressed once at Home; a second press soon after leaves the app.
+  exitArmed: boolean;
 }
+
+const EXIT_WINDOW_MS = 2500;
 
 const NavContext = createContext<NavContextValue | null>(null);
 
@@ -38,11 +42,21 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const push = useCallback((route: Route) => setStack([...stackRef.current, route]), [setStack]);
-  const replace = useCallback(
-    (route: Route) => setStack([...stackRef.current.slice(0, -1), route]),
-    [setStack],
-  );
+  const replace = useCallback((route: Route) => setStack([...stackRef.current.slice(0, -1), route]), [setStack]);
   const goTo = useCallback((route: Route) => setStack([route]), [setStack]);
+
+  // One Back too many at Home shouldn't throw the viewer out of the app, so
+  // the first one only says how to leave.
+  const [exitArmed, setExitArmed] = useState(false);
+  const exitArmedRef = useRef(false);
+  const exitTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const armExit = useCallback((on: boolean) => {
+    exitArmedRef.current = on;
+    setExitArmed(on);
+    clearTimeout(exitTimer.current);
+    if (on) exitTimer.current = setTimeout(() => armExit(false), EXIT_WINDOW_MS);
+  }, []);
+
   const back = useCallback(() => {
     const s = stackRef.current;
     if (s.length > 1) {
@@ -53,8 +67,15 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       setStack([{ name: 'home' }]);
       return true;
     }
-    return false;
-  }, [setStack]);
+    // A browser tab has nothing to leave to.
+    if (Platform.OS === 'web') return false;
+    if (exitArmedRef.current) {
+      armExit(false);
+      return false;
+    }
+    armExit(true);
+    return true;
+  }, [setStack, armExit]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -73,10 +94,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, [back]);
 
-  const value = useMemo(
-    () => ({ stack, push, replace, back, goTo }),
-    [stack, push, replace, back, goTo],
-  );
+  const value = useMemo(() => ({ stack, push, replace, back, goTo, exitArmed }), [stack, push, replace, back, goTo, exitArmed]);
   return <NavContext.Provider value={value}>{children}</NavContext.Provider>;
 }
 

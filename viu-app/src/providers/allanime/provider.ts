@@ -3,13 +3,7 @@
 // Only the mp4upload source is extracted, matching the Python provider: as of
 // 2026-10 AllAnime's own sources are gone and the remaining embeds (Ok, Fm-Hls,
 // Sw, ...) aren't supported yet.
-import {
-  AnimeProvider,
-  ProviderAnime,
-  ProviderSearchResult,
-  StreamServer,
-  TranslationType,
-} from '../types';
+import { AnimeProvider, ProviderAnime, ProviderSearchResult, StreamServer, TranslationType } from '../types';
 import {
   ANIME_GQL,
   API_GRAPHQL_ENDPOINT,
@@ -22,6 +16,7 @@ import {
   SEARCH_GQL,
   USER_AGENT,
 } from './constants';
+import { HttpError, reach } from '../../lib/errors';
 import { AllAnimeKeys } from './keys';
 
 interface AllAnimeSource {
@@ -70,12 +65,14 @@ export class AllAnimeProvider implements AnimeProvider {
   }
 
   private async graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-    const response = await this.fetchFn(API_GRAPHQL_ENDPOINT, {
-      method: 'POST',
-      headers: API_GRAPHQL_HEADERS,
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!response.ok) throw new Error(`AllAnime request failed (${response.status})`);
+    const response = await reach('AllAnime', () =>
+      this.fetchFn(API_GRAPHQL_ENDPOINT, {
+        method: 'POST',
+        headers: API_GRAPHQL_HEADERS,
+        body: JSON.stringify({ query, variables }),
+      }),
+    );
+    if (!response.ok) throw new HttpError('AllAnime', response.status);
     const json = (await response.json()) as { data?: T; errors?: unknown };
     if (!json.data) throw new Error(`AllAnime returned no data: ${JSON.stringify(json.errors)}`);
     return json.data;

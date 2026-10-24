@@ -5,10 +5,11 @@ import { currentSeason, GENRES, listMedia, MediaFilter } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
 import { useSettings } from '../state/settings';
-import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { FrameMarks } from '../ui/Decor';
-import { MediaCard } from '../ui/MediaCard';
+import { Empty } from '../ui/Empty';
+import { ErrorState } from '../ui/ErrorState';
+import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
 import { Panel } from '../ui/Panel';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
@@ -31,7 +32,14 @@ const SORTS: { label: string; sort: string[] }[] = [
 const FORMATS = ['TV', 'MOVIE', 'OVA', 'ONA', 'SPECIAL', 'TV_SHORT'];
 const SEASONS: Season[] = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
 const SEASON_LABELS: Record<Season, string> = { WINTER: 'Winter', SPRING: 'Spring', SUMMER: 'Summer', FALL: 'Fall' };
-const FORMAT_LABELS: Record<string, string> = { TV: 'TV', MOVIE: 'Movie', OVA: 'OVA', ONA: 'ONA', SPECIAL: 'Special', TV_SHORT: 'TV short' };
+const FORMAT_LABELS: Record<string, string> = {
+  TV: 'TV',
+  MOVIE: 'Movie',
+  OVA: 'OVA',
+  ONA: 'ONA',
+  SPECIAL: 'Special',
+  TV_SHORT: 'TV short',
+};
 
 interface Filters {
   sort: number;
@@ -46,7 +54,6 @@ interface Filters {
 export function BrowseScreen() {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
 
   const thisYear = currentSeason().year;
@@ -75,7 +82,7 @@ export function BrowseScreen() {
 
   const group = (label: string, children: React.ReactNode) => (
     <View style={{ gap: 12 }}>
-      <Text variant="label" size={graphic ? 14 : 18} color={c.featureMuted}>
+      <Text variant="meta" color={c.featureMuted}>
         {label}
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{children}</View>
@@ -87,44 +94,40 @@ export function BrowseScreen() {
       <FrameMarks crumb="VIU.TV / BROWSE" />
       <TopNav active="browse" />
 
-      <Panel style={{ position: 'absolute', top: graphic ? 160 : 150, left: 80, bottom: 56, width: 600 }}>
+      <Panel style={{ position: 'absolute', top: theme.layout.contentTop, left: 80, bottom: 56, width: 600 }}>
         <ScrollView contentContainerStyle={{ padding: 28, gap: 26 }} showsVerticalScrollIndicator={false}>
           {group(
             'Sort',
             SORTS.map((s, i) => (
-              <Chip key={s.label} onFeature label={s.label} selected={filters.sort === i} autoFocus={i === 0} onPress={() => set({ sort: i })} />
+              <Chip key={s.label} label={s.label} selected={filters.sort === i} autoFocus={i === 0} onPress={() => set({ sort: i })} />
             )),
           )}
           {group('Format', [
-            <Chip key="any" onFeature label="Any" selected={!filters.format} onPress={() => set({ format: undefined })} />,
+            <Chip key="any" label="Any" selected={!filters.format} onPress={() => set({ format: undefined })} />,
             ...FORMATS.map((f) => (
-              <Chip key={f} onFeature label={FORMAT_LABELS[f]} selected={filters.format === f} onPress={() => set({ format: f })} />
+              <Chip key={f} label={FORMAT_LABELS[f]} selected={filters.format === f} onPress={() => set({ format: f })} />
             )),
           ])}
           {group('Year', [
-            <Chip key="any" onFeature label="Any" selected={!filters.year} onPress={() => set({ year: undefined })} />,
-            ...years.map((y) => (
-              <Chip key={y} onFeature label={String(y)} selected={filters.year === y} onPress={() => set({ year: y })} />
-            )),
+            <Chip key="any" label="Any" selected={!filters.year} onPress={() => set({ year: undefined })} />,
+            ...years.map((y) => <Chip key={y} label={String(y)} selected={filters.year === y} onPress={() => set({ year: y })} />),
           ])}
           {group('Season', [
-            <Chip key="any" onFeature label="Any" selected={!filters.season} onPress={() => set({ season: undefined })} />,
+            <Chip key="any" label="Any" selected={!filters.season} onPress={() => set({ season: undefined })} />,
             ...SEASONS.map((s) => (
-              <Chip key={s} onFeature label={SEASON_LABELS[s]} selected={filters.season === s} onPress={() => set({ season: s })} />
+              <Chip key={s} label={SEASON_LABELS[s]} selected={filters.season === s} onPress={() => set({ season: s })} />
             )),
           ])}
           {group('Genre', [
-            <Chip key="any" onFeature label="Any" selected={!filters.genre} onPress={() => set({ genre: undefined })} />,
-            ...GENRES.map((g) => (
-              <Chip key={g} onFeature label={g} selected={filters.genre === g} onPress={() => set({ genre: g })} />
-            )),
+            <Chip key="any" label="Any" selected={!filters.genre} onPress={() => set({ genre: undefined })} />,
+            ...GENRES.map((g) => <Chip key={g} label={g} selected={filters.genre === g} onPress={() => set({ genre: g })} />),
           ])}
         </ScrollView>
       </Panel>
 
       <ScrollView
         ref={grid}
-        style={{ position: 'absolute', top: graphic ? 146 : 136, left: 700, right: 66, bottom: 0 }}
+        style={{ position: 'absolute', top: theme.layout.contentTop - 14, left: 700, right: 66, bottom: 0 }}
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 24, rowGap: 32, padding: 14, paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
       >
@@ -134,15 +137,15 @@ export function BrowseScreen() {
             filter={filter}
             page={i + 1}
             onLoaded={(count) => setLastPage({ key, page: i + 1, count })}
-            onFocusIndex={(n) => grid.current?.scrollTo({ y: Math.max(0, Math.floor((i * PER_PAGE + n) / COLS) * ROW_STEP), animated: true })}
+            onFocusIndex={(n) => {
+              grid.current?.scrollTo({ y: Math.max(0, Math.floor((i * PER_PAGE + n) / COLS) * ROW_STEP), animated: true });
+              // Reaching the last row of what's loaded fetches the next page,
+              // so a remote never has to find a "more" button.
+              if (more && i + 1 === pages && n >= PER_PAGE - COLS) setPages((p) => p + 1);
+            }}
             onOpen={(id) => nav.push({ name: 'details', mediaId: id })}
           />
         ))}
-        {more && (
-          <View style={{ width: '100%', alignItems: 'flex-start', paddingTop: 8 }}>
-            <Button variant="outline" label="Show more" onPress={() => setPages((p) => p + 1)} />
-          </View>
-        )}
       </ScrollView>
     </View>
   );
@@ -163,8 +166,6 @@ function ResultsPage({
   onFocusIndex: (index: number) => void;
   onOpen: (mediaId: number) => void;
 }) {
-  const { theme } = useSettings();
-  const c = theme.colors;
   const result = useAsync(`browse:${JSON.stringify(filter)}:${page}`, () => listMedia({ ...filter, page }));
   const count = result.data?.length;
   useEffect(() => {
@@ -173,9 +174,23 @@ function ResultsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [count]);
 
-  if (result.error) return <Text color={c.textMuted}>{`Couldn't load titles: ${result.error.message}`}</Text>;
-  if (result.loading && page === 1) return <Text color={c.textMuted}>Loading…</Text>;
-  if (count === 0 && page === 1) return <Text color={c.textMuted}>Nothing on AniList matches these filters.</Text>;
+  if (result.error) {
+    return (
+      <ErrorState
+        compact
+        autoFocus={page === 1}
+        error={result.error}
+        service="AniList"
+        title="Couldn't load titles"
+        onRetry={result.retry}
+        style={{ width: '100%', paddingVertical: 8 }}
+      />
+    );
+  }
+  if (result.loading) return <PosterSkeletons count={page === 1 ? PER_PAGE : COLS} width={CARD_W} height={CARD_H} />;
+  if (count === 0 && page === 1) {
+    return <Empty title="Nothing matches" body="No titles on AniList fit all of these filters. Try setting one back to Any." />;
+  }
   return (
     <>
       {(result.data ?? []).map((m, n) => (

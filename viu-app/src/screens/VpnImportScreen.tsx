@@ -19,7 +19,6 @@ const IMPORT_PORT = 8735;
 export function VpnImportScreen() {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
   const { update } = useNetwork();
 
@@ -42,16 +41,12 @@ export function VpnImportScreen() {
 
   const step = (n: string, title: string, body: string) => (
     <View style={{ flexDirection: 'row', gap: 22 }}>
-      <Text variant={graphic ? 'display' : 'bodyBold'} size={graphic ? 48 : 32} color={c.primary} style={{ width: 52 }}>
+      <Text variant="numeral" color={c.primary} style={{ width: 52 }}>
         {n}
       </Text>
       <View style={{ flex: 1, gap: 6 }}>
-        <Text variant="title" size={graphic ? 32 : 26}>
-          {title}
-        </Text>
-        <Text size={20} color={c.textMuted}>
-          {body}
-        </Text>
+        <Text variant="item">{title}</Text>
+        <Text color={c.textMuted}>{body}</Text>
       </View>
     </View>
   );
@@ -60,10 +55,8 @@ export function VpnImportScreen() {
     <View style={StyleSheet.absoluteFill}>
       <FrameMarks crumb="VIU.TV / SETTINGS / VPN" />
       <View style={{ position: 'absolute', top: 90, left: 80, right: 80, gap: 14 }}>
-        <Text variant="display" size={graphic ? 110 : 72}>
-          Add a WireGuard VPN
-        </Text>
-        <Text size={22} color={c.textMuted}>
+        <Text variant="page">Add a WireGuard VPN</Text>
+        <Text variant="bodyLg" color={c.textMuted}>
           Only Viu uses the VPN. Other apps on this TV keep their normal connection.
         </Text>
       </View>
@@ -78,14 +71,14 @@ export function VpnImportScreen() {
         {step('3', 'Send the file', 'Pick the .conf file (or paste its text) and tap Send to TV. Viu connects right away.')}
         {received && (
           <View style={{ flexDirection: 'row', gap: 20, alignItems: 'center', marginLeft: 74 }}>
-            <Text variant="bodyBold" size={24} color={c.primary}>
+            <Text variant="bodyBold" color={c.primary}>
               {`Got it. Viu now connects through ${received}.`}
             </Text>
             <Button variant="primary" size="sm" label="Done" autoFocus onPress={() => nav.back()} />
           </View>
         )}
         {error && (
-          <Text size={20} color={c.accent} style={{ marginLeft: 74 }}>
+          <Text variant="bodyBold" color={c.accent} style={{ marginLeft: 74 }}>
             {`Couldn't open the import page: ${error}`}
           </Text>
         )}
@@ -93,7 +86,7 @@ export function VpnImportScreen() {
 
       <Panel style={{ position: 'absolute', top: 330, right: 80, width: 560, padding: 40, gap: 24, alignItems: 'center' }}>
         {url ? <QrCode value={url} size={380} /> : <View style={{ width: 380, height: 380 }} />}
-        <Text variant="label" size={graphic ? 14 : 17} color={c.featureMuted} style={{ textAlign: 'center' }} selectable>
+        <Text variant="label" color={c.featureMuted} style={{ textAlign: 'center' }} selectable>
           {url ? url.replace('http://', '') : 'Starting…'}
         </Text>
       </Panel>

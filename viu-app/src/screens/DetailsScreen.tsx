@@ -8,10 +8,11 @@ import { findShow, ProviderUnavailableError, showKey, TranslationType } from '..
 import { episodeProgress, HistoryEntry, isWatched, progressOf, upNext, useHistory } from '../state/history';
 import { useListMembership } from '../state/mylist';
 import { useSettings } from '../state/settings';
-import { Art, HeroScrim } from '../ui/Art';
+import { Art, Backdrop, HeroScrim, Skeleton } from '../ui/Art';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { DotMatrix, FrameMarks, Hazard } from '../ui/Decor';
+import { ErrorState } from '../ui/ErrorState';
 import { Focusable } from '../ui/Focusable';
 import { Icon } from '../ui/Icon';
 import { Panel } from '../ui/Panel';
@@ -19,12 +20,12 @@ import { ProgressBar } from '../ui/ProgressBar';
 import { Text } from '../ui/Text';
 import { metaLine, minutesLeft } from './format';
 
-const EP_STEP = 135;
+// One episode row plus the gap between rows.
+const EP_STEP = 124;
 
 export function DetailsScreen({ mediaId }: { mediaId: number }) {
   const { theme, settings } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
   const history = useHistory();
   const entry = history.get(mediaId);
@@ -59,39 +60,55 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
 
   const m = media.data;
   if (!m) {
-    return (
-      <View style={[StyleSheet.absoluteFill, { padding: 80, justifyContent: 'center' }]}>
-        <Text variant="title" color={c.textMuted}>
-          {media.error ? `Couldn't load this title: ${media.error.message}` : 'Loading…'}
-        </Text>
-      </View>
-    );
+    if (media.error) {
+      return (
+        <View style={[StyleSheet.absoluteFill, { padding: 80, justifyContent: 'center' }]}>
+          <ErrorState
+            error={media.error}
+            service="AniList"
+            title="Couldn't load this title"
+            onRetry={media.retry}
+            other={{ label: 'Back', onPress: nav.back }}
+          />
+        </View>
+      );
+    }
+    return <DetailsSkeleton />;
   }
 
   const unavailable = show.error instanceof ProviderUnavailableError;
   const notFound = !show.loading && !show.error && show.data === null;
-  const status = show.loading
-    ? 'Finding streams…'
-    : unavailable
-      ? show.error!.message
-      : notFound
-        ? `AllAnime doesn't list a ${translation === 'dub' ? 'dub' : 'sub'} for this title.`
-        : show.error
-          ? `Couldn't reach AllAnime: ${show.error.message}`
-          : null;
+  const other: TranslationType = translation === 'dub' ? 'sub' : 'dub';
+  const otherLabel = other === 'dub' ? 'Dub' : 'Sub';
+  // Rows only for episodes that can play, except where streaming is off
+  // altogether (the web build without a proxy), where the list still helps
+  // browsing and the status line says why.
+  const showRows = !notFound && !(show.error && !unavailable);
+  const status = show.loading ? 'Finding streams…' : unavailable ? show.error!.message : null;
+  const switchTranslation = (t: TranslationType) => {
+    setTranslation(t);
+    setRangeIndex(null);
+  };
+  const playLabel = next ? `${next.resume ? 'Resume' : 'Play'} E${next.episode}` : `Play E${episodes[0] ?? 1}`;
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      <Art uri={m.bannerImage ?? m.coverImage.extraLarge} fallback={m.coverImage.color} style={StyleSheet.absoluteFill} />
+      <Backdrop media={m} poster={false} />
       <DotMatrix />
       <HeroScrim strength="details" />
       <FrameMarks crumb={`VIU.TV / TITLE / ${m.id}`} />
 
-      <View style={{ position: 'absolute', top: graphic ? 70 : 80, left: 80, width: 760, gap: 22 }}>
-        <Focusable onPress={nav.back} lift={false} radius={theme.shape.radiusSm} style={{ alignSelf: 'flex-start' }}>
+      <View style={{ position: 'absolute', top: theme.layout.navTop + 20, left: 80, width: 760, gap: 22 }}>
+        <Focusable
+          onPress={nav.back}
+          lift={false}
+          radius={theme.shape.radiusSm}
+          accessibilityLabel="Back"
+          style={{ alignSelf: 'flex-start' }}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, paddingRight: 8 }}>
-            <Icon name="chevronLeft" size={22} color={c.textMuted} square={graphic} />
-            <Text variant="label" size={graphic ? 15 : 20} color={c.textMuted}>
+            <Icon name="chevronLeft" size={24} color={c.textMuted} />
+            <Text variant="label" color={c.textMuted}>
               Back
             </Text>
           </View>
@@ -99,75 +116,124 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
         <Art
           uri={m.coverImage.extraLarge ?? m.coverImage.large}
           fallback={m.coverImage.color}
-          style={{ width: 220, height: 330, borderRadius: theme.shape.radiusMd, borderWidth: graphic ? 0 : 1, borderColor: 'rgba(255,255,255,0.12)' }}
+          style={{
+            width: 220,
+            height: 330,
+            borderRadius: theme.shape.radiusMd,
+            borderWidth: theme.shape.artBorder,
+            borderColor: c.artOutline,
+          }}
         />
-        <Text variant="display" size={displayTitle(m).length > 34 ? 52 : graphic ? 84 : 64} numberOfLines={2} style={{ marginTop: 6 }}>
+        <Text
+          variant="headline"
+          size={displayTitle(m).length > 34 ? Math.round(theme.text.headline.size * 0.75) : undefined}
+          numberOfLines={2}
+          style={{ marginTop: 6 }}
+        >
           {displayTitle(m)}
         </Text>
-        <Text variant="label" size={graphic ? 15 : 21} color={c.textMuted}>
+        <Text variant="label" color={c.textMuted}>
           {metaLine(m, { episodes: true, status: true })}
         </Text>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
           {m.genres.slice(0, 4).map((g) => (
-            <Chip key={g} label={g} size={graphic ? 'sm' : 'md'} />
+            <Chip key={g} label={g} size="sm" />
           ))}
         </View>
-        <Text size={22} color={c.textOnArt} numberOfLines={4}>
+        <Text color={c.textOnArt} numberOfLines={4}>
           {plainDescription(m)}
         </Text>
         <View style={{ flexDirection: 'row', gap: 14, marginTop: 6 }}>
-          <Button
-            autoFocus
-            variant="primary"
-            icon={graphic ? undefined : 'play'}
-            label={next ? `${next.resume ? 'Resume' : 'Play'} E${next.episode}` : `Play E${episodes[0] ?? 1}`}
-            onPress={() => play(next?.episode ?? episodes[0] ?? '1')}
-          />
+          {notFound ? (
+            <Button autoFocus variant="primary" label={`Try the ${otherLabel.toLowerCase()}`} onPress={() => switchTranslation(other)} />
+          ) : (
+            <Button
+              autoFocus
+              variant="primary"
+              icon="play"
+              optionalIcon
+              label={playLabel}
+              disabled={!!show.error && !unavailable}
+              onPress={() => play(next?.episode ?? episodes[0] ?? '1')}
+            />
+          )}
           <Button
             icon={membership.inList ? 'check' : 'plus'}
             label={listLabel(membership)}
-            onPress={membership.canToggle ? membership.toggle : undefined}
+            disabled={membership.loading || !membership.canToggle}
+            onPress={membership.toggle}
           />
         </View>
         {membership.error && (
-          <Text variant="label" size={graphic ? 14 : 18} color={c.accent}>
+          <Text variant="label" color={c.accent}>
             {`AniList: ${membership.error.message}`}
+          </Text>
+        )}
+        {!membership.canToggle && !membership.loading && (
+          <Text variant="meta" color={c.textMuted}>
+            Change this title's status on AniList; removing it here would erase your progress.
           </Text>
         )}
       </View>
 
       <Panel style={{ position: 'absolute', top: 64, bottom: 64, left: 920, right: 64, padding: 36, gap: 24 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
-          <Text variant="title" size={graphic ? 40 : 30} color={c.featureText}>
+          <Text variant="section" color={c.featureText}>
             Episodes
           </Text>
           <Hazard color={c.featureText} style={{ flex: 1 }} />
           {!theme.decor.hazard && <View style={{ flex: 1 }} />}
-          <View style={{ flexDirection: 'row', gap: 8, marginRight: graphic ? 24 : 0 }}>
+          <View style={{ flexDirection: 'row', gap: 8, marginRight: theme.shape.chamfer }}>
             {(['sub', 'dub'] as const).map((t) => (
               <Chip
                 key={t}
-                onFeature
                 label={t === 'sub' ? 'Sub' : 'Dub'}
+                accessibilityLabel={t === 'sub' ? 'Subtitled' : 'Dubbed'}
                 selected={translation === t}
-                onPress={() => {
-                  setTranslation(t);
-                  setRangeIndex(null);
-                }}
+                onPress={() => switchTranslation(t)}
               />
             ))}
           </View>
         </View>
 
-        {ranges.length > 1 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginVertical: -10 }} contentContainerStyle={{ gap: 10, padding: 10 }}>
+        {notFound && (
+          <View style={{ flex: 1, gap: 14, paddingTop: 12 }}>
+            <Text variant="item" color={c.featureText}>
+              {`No ${translation === 'dub' ? 'dub' : 'subtitled version'} on AllAnime`}
+            </Text>
+            <Text
+              color={c.featureMuted}
+            >{`AllAnime doesn't list this title in ${translation === 'dub' ? 'English dub' : 'subtitles'}. The ${otherLabel.toLowerCase()} may be there.`}</Text>
+          </View>
+        )}
+
+        {show.error && !unavailable && (
+          <View style={{ flex: 1, paddingTop: 12 }}>
+            <ErrorState
+              compact
+              autoFocus={false}
+              error={show.error}
+              service="AllAnime"
+              title="Couldn't find streams"
+              onRetry={show.retry}
+            />
+          </View>
+        )}
+
+        {showRows && ranges.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0, marginVertical: -10 }}
+            contentContainerStyle={{ gap: 10, padding: 10 }}
+          >
             {ranges.map((r, i) => (
               <Chip
                 key={r.from}
-                onFeature
-                check={i === activeRange && !graphic}
+                check={i === activeRange}
                 selected={i === activeRange}
                 label={`${episodes[r.from]}–${episodes[r.to - 1]}`}
+                accessibilityLabel={`Episodes ${episodes[r.from]} to ${episodes[r.to - 1]}`}
                 onPress={() => {
                   setRangeIndex(i);
                   list.current?.scrollTo({ y: 0, animated: false });
@@ -177,25 +243,55 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           </ScrollView>
         )}
 
-        <ScrollView ref={list} style={{ flex: 1, marginHorizontal: -14 }} contentContainerStyle={{ gap: 8, padding: 14 }} showsVerticalScrollIndicator={false}>
-          {range &&
-            episodes.slice(range.from, range.to).map((ep, i) => (
-              <EpisodeRow
-                key={ep}
-                media={m}
-                episode={ep}
-                entry={entry}
-                order={episodes.indexOf(ep)}
-                resumeOrder={entry ? episodes.indexOf(entry.episode) : -1}
-                onFocus={() => list.current?.scrollTo({ y: Math.max(0, (i - 1) * EP_STEP), animated: true })}
-                onPress={() => play(ep)}
-              />
-            ))}
-        </ScrollView>
+        {showRows && (
+          <ScrollView
+            ref={list}
+            style={{ flex: 1, marginHorizontal: -14 }}
+            contentContainerStyle={{ gap: 8, padding: 14 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {range &&
+              episodes
+                .slice(range.from, range.to)
+                .map((ep, i) => (
+                  <EpisodeRow
+                    key={ep}
+                    media={m}
+                    episode={ep}
+                    entry={entry}
+                    order={episodes.indexOf(ep)}
+                    resumeOrder={entry ? episodes.indexOf(entry.episode) : -1}
+                    onFocus={() => list.current?.scrollTo({ y: Math.max(0, (i - 1) * EP_STEP), animated: true })}
+                    onPress={() => play(ep)}
+                  />
+                ))}
+          </ScrollView>
+        )}
 
-        <Text variant="label" size={graphic ? 13 : 17} color={c.featureMuted}>
-          {status ?? `Streams from AllAnime  ·  mp4upload  ·  ${episodes.length} episodes`}
+        <Text variant="meta" color={c.featureMuted}>
+          {status ?? (showRows ? `Streams from AllAnime  ·  mp4upload  ·  ${episodes.length} episodes` : 'Streams from AllAnime')}
         </Text>
+      </Panel>
+    </View>
+  );
+}
+
+// The page's shape while AniList answers.
+function DetailsSkeleton() {
+  const { theme } = useSettings();
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <View style={{ position: 'absolute', top: theme.layout.navTop + 70, left: 80, gap: 22 }}>
+        <Skeleton style={{ width: 220, height: 330 }} />
+        <Skeleton style={{ width: 640, height: 64 }} />
+        <Skeleton style={{ width: 460, height: 28 }} />
+        <Skeleton style={{ width: 700, height: 120 }} />
+      </View>
+      <Panel style={{ position: 'absolute', top: 64, bottom: 64, left: 920, right: 64, padding: 36, gap: 18 }}>
+        <Skeleton style={{ width: 220, height: 36 }} />
+        {Array.from({ length: 6 }, (_, i) => (
+          <Skeleton key={i} style={{ height: 110 }} />
+        ))}
       </Panel>
     </View>
   );
@@ -237,7 +333,6 @@ function EpisodeRow({
 }) {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const own = episodeProgress(entry, episode, order, resumeOrder);
   const watched = isWatched(own);
   const current = !!own && !watched;
@@ -245,7 +340,13 @@ function EpisodeRow({
   const state = watched ? 'Watched' : current ? minutesLeft(own!) : 'Not started';
 
   return (
-    <Focusable onPress={onPress} onFocus={onFocus} lift={false} radius={theme.shape.radiusMd}>
+    <Focusable
+      onPress={onPress}
+      onFocus={onFocus}
+      lift={false}
+      radius={theme.shape.radiusMd}
+      accessibilityLabel={`Episode ${episode}, ${state}`}
+    >
       {(focused) => (
         <View
           style={{
@@ -254,32 +355,39 @@ function EpisodeRow({
             gap: 24,
             padding: 14,
             borderRadius: theme.shape.radiusMd,
-            backgroundColor: focused ? (graphic ? 'rgba(12,12,14,0.08)' : 'rgba(255,218,210,0.14)') : 'transparent',
+            backgroundColor: focused ? c.rowFocus : 'transparent',
           }}
         >
-          <Art
-            uri={media.bannerImage ?? media.coverImage.large}
-            fallback={media.coverImage.color}
-            style={{ width: 176, height: 99, borderRadius: Math.max(0, theme.shape.radiusMd - 6) }}
+          {/* AniList has no per-episode stills, so a numbered tile stands in
+              rather than the same banner twelve times over. */}
+          <View
+            style={{
+              width: 132,
+              height: 88,
+              borderRadius: Math.max(0, theme.shape.radiusMd - 6),
+              backgroundColor: c.tonal,
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}
           >
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
-            <Text variant="display" size={36} color="rgba(255,255,255,0.75)" style={{ position: 'absolute', top: 8, left: 14 }}>
+            <Text variant="numeral" color={c.onTonal}>
               {episode}
             </Text>
             {progress > 0 && (
-              <ProgressBar value={progress} height={5} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: 0 }} />
+              <ProgressBar value={progress} height={6} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: 0 }} />
             )}
-          </Art>
+          </View>
           <View style={{ flex: 1, gap: 6 }}>
-            <Text variant={graphic ? 'title' : 'bodyBold'} size={graphic ? 28 : 24} color={c.featureText} style={{ lineHeight: graphic ? 30 : 30 }}>
+            <Text variant="item" color={c.featureText}>
               {`Episode ${episode}`}
             </Text>
-            <Text variant="label" size={graphic ? 14 : 18} color={current ? (graphic ? c.featureText : c.primary) : c.featureMuted}>
+            <Text variant="label" color={current ? c.featureAccent : c.featureMuted}>
               {state}
             </Text>
           </View>
           {media.duration ? (
-            <Text variant="label" size={graphic ? 14 : 18} color={c.featureMuted} style={{ paddingRight: 12 }}>
+            <Text variant="meta" color={c.featureMuted} style={{ paddingRight: 12 }}>
               {`${media.duration} min`}
             </Text>
           ) : null}

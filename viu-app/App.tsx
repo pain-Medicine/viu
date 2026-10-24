@@ -31,7 +31,9 @@ import { HistoryProvider } from './src/state/history';
 import { LocalListProvider } from './src/state/mylist';
 import { NetworkProvider, useNetwork } from './src/state/network';
 import { SettingsProvider, useSettings } from './src/state/settings';
+import { Panel } from './src/ui/Panel';
 import { Stage } from './src/ui/Stage';
+import { Text } from './src/ui/Text';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -83,7 +85,7 @@ function NetworkGate({ children }: { children: React.ReactNode }) {
 
 function Root({ ready }: { ready: boolean }) {
   const settings = useSettings();
-  const { stack } = useNav();
+  const { stack, exitArmed } = useNav();
   if (!ready || !settings.ready) return <View style={{ flex: 1, backgroundColor: '#000' }} />;
   return (
     <Stage>
@@ -94,7 +96,18 @@ function Root({ ready }: { ready: boolean }) {
           {renderRoute(route)}
         </ScreenHost>
       ))}
+      {exitArmed && <ExitHint />}
     </Stage>
+  );
+}
+
+function ExitHint() {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 72, alignItems: 'center' }}>
+      <Panel kind="chrome" style={{ paddingHorizontal: 36, paddingVertical: 18 }}>
+        <Text variant="bodyBold">Press Back again to leave Viu</Text>
+      </Panel>
+    </View>
   );
 }
 

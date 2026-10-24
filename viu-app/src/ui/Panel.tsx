@@ -2,7 +2,9 @@ import { BlurView } from 'expo-blur';
 import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
 import { useTheme } from '../state/settings';
+import { withAlpha } from './Art';
 import { ChamferBox } from './Shapes';
+import { SurfaceContext } from './Surface';
 
 interface Props {
   // "feature": the large content panel (Continue watching, episode list).
@@ -18,6 +20,17 @@ interface Props {
 const canBlur = Platform.OS !== 'android';
 
 export function Panel({ kind = 'feature', radius, style, children }: Props) {
+  const body = (
+    <PanelBody kind={kind} radius={radius} style={style}>
+      {children}
+    </PanelBody>
+  );
+  // Chrome bars are dark in every theme, so only the feature panel changes
+  // what sits on it.
+  return kind === 'feature' ? <SurfaceContext.Provider value="feature">{body}</SurfaceContext.Provider> : body;
+}
+
+function PanelBody({ kind = 'feature', radius, style, children }: Props) {
   const theme = useTheme();
   const c = theme.colors;
 
@@ -29,9 +42,7 @@ export function Panel({ kind = 'feature', radius, style, children }: Props) {
         </ChamferBox>
       );
     }
-    return (
-      <View style={[{ backgroundColor: c.chrome, borderWidth: 1, borderColor: c.outline }, style]}>{children}</View>
-    );
+    return <View style={[{ backgroundColor: c.chrome, borderWidth: 1, borderColor: c.outline }, style]}>{children}</View>;
   }
 
   const r = radius ?? (kind === 'feature' ? theme.shape.radiusLg : 999);
@@ -43,8 +54,9 @@ export function Panel({ kind = 'feature', radius, style, children }: Props) {
           borderRadius: r,
           overflow: 'hidden',
           borderWidth: 1,
-          borderColor: kind === 'feature' ? c.featureOutline : 'rgba(255,255,255,0.14)',
-          backgroundColor: canBlur ? tint : 'rgba(36,25,23,0.9)',
+          borderColor: c.featureOutline,
+          // Without blur, a near-opaque tint keeps text over busy art readable.
+          backgroundColor: canBlur ? tint : withAlpha(tint, 0.9),
         },
         style,
       ]}

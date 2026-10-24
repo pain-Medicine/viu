@@ -7,7 +7,9 @@ import { useNav, useScreenActive } from '../nav/navigation';
 import { useSettings } from '../state/settings';
 import { FrameMarks } from '../ui/Decor';
 import { Focusable } from '../ui/Focusable';
-import { MediaCard } from '../ui/MediaCard';
+import { Empty } from '../ui/Empty';
+import { ErrorState } from '../ui/ErrorState';
+import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
 import { Panel } from '../ui/Panel';
 import { Text } from '../ui/Text';
 import { formatLabel } from './format';
@@ -23,7 +25,6 @@ const ROW_STEP = CARD_H + 120;
 export function SearchScreen() {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
   const active = useScreenActive();
 
@@ -68,27 +69,23 @@ export function SearchScreen() {
       key={label}
       onPress={onPress}
       autoFocus={opts.autoFocus}
-      radius={graphic ? 0 : 18}
+      radius={Math.min(theme.shape.radiusMd, 18)}
+      accessibilityLabel={label === ' ' ? 'Space' : label}
       style={{ width: opts.wide ? 226 : 68 }}
     >
       {(focused) => (
         <View
           style={{
             height: 64,
-            borderRadius: graphic ? 0 : 18,
+            borderRadius: Math.min(theme.shape.radiusMd, 18),
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: focused ? c.selected : graphic ? 'transparent' : 'rgba(255,255,255,0.08)',
-            borderWidth: graphic ? 1 : 0,
-            borderColor: c.featureOutline,
+            backgroundColor: focused ? c.featureSelected : c.key,
+            borderWidth: 1,
+            borderColor: c.key === 'transparent' ? c.featureOutline : 'transparent',
           }}
         >
-          <Text
-            variant={graphic && !opts.wide ? 'labelBold' : 'bodyBold'}
-            size={opts.wide ? 20 : 24}
-            color={focused ? c.onSelected : c.featureText}
-            style={{ textTransform: graphic ? 'uppercase' : 'none' }}
-          >
+          <Text variant={opts.wide ? 'labelBold' : 'key'} color={focused ? c.onFeatureSelected : c.featureText}>
             {label}
           </Text>
         </View>
@@ -103,19 +100,27 @@ export function SearchScreen() {
       <Panel
         kind="chrome"
         radius={28}
-        style={{ position: 'absolute', top: 56, left: 80, right: 80, height: 96, flexDirection: 'row', alignItems: 'center', gap: 20, paddingHorizontal: 32 }}
+        style={{
+          position: 'absolute',
+          top: 56,
+          left: 80,
+          right: 80,
+          height: 96,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 20,
+          paddingHorizontal: 32,
+        }}
       >
-        <Text
-          variant={graphic ? 'display' : 'bodyBold'}
-          size={graphic ? 52 : 40}
-          color={query ? '#FFFFFF' : c.textMuted}
-          style={{ flex: 1, lineHeight: graphic ? 56 : 48 }}
-          numberOfLines={1}
-        >
+        <Text variant="query" color={query ? c.text : c.textMuted} style={{ flex: 1 }} numberOfLines={1}>
           {query || 'Search anime'}
-          {query ? <Text variant="bodyBold" size={40} color={c.primary}>|</Text> : null}
+          {query ? (
+            <Text variant="query" color={c.primary}>
+              |
+            </Text>
+          ) : null}
         </Text>
-        <Text variant="label" size={graphic ? 14 : 18} color={c.textMuted}>
+        <Text variant="label" color={c.textMuted}>
           {results.loading ? 'Searching…' : debounced ? `${items.length} results` : 'Trending now'}
         </Text>
       </Panel>
@@ -130,7 +135,7 @@ export function SearchScreen() {
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>{key('Clear', () => setQuery(''), { wide: true })}</View>
         <View style={{ flex: 1 }} />
-        <Text variant="label" size={graphic ? 13 : 16} color={c.featureMuted}>
+        <Text variant="meta" color={c.featureMuted}>
           {Platform.OS === 'web' ? 'Type on your keyboard or use the keys above.' : 'Titles come from AniList.'}
         </Text>
       </Panel>
@@ -142,10 +147,21 @@ export function SearchScreen() {
         showsVerticalScrollIndicator={false}
       >
         {results.error && (
-          <Text color={c.textMuted}>{`Search failed: ${results.error.message}`}</Text>
+          <ErrorState
+            compact
+            autoFocus={false}
+            error={results.error}
+            service="AniList"
+            title="Search didn't work"
+            onRetry={results.retry}
+          />
         )}
+        {results.loading && !items.length && <PosterSkeletons count={10} width={CARD_W} height={CARD_H} />}
         {!results.loading && debounced && !items.length && !results.error && (
-          <Text color={c.textMuted}>{`Nothing on AniList matches “${debounced}”.`}</Text>
+          <Empty
+            title={`Nothing called “${debounced}”`}
+            body="AniList matches whole words, so keep typing, or try the English or Japanese title."
+          />
         )}
         {items.map((m, i) => (
           <MediaCard

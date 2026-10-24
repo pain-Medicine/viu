@@ -10,7 +10,9 @@ import { useSettings } from '../state/settings';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { FrameMarks } from '../ui/Decor';
-import { MediaCard } from '../ui/MediaCard';
+import { Empty } from '../ui/Empty';
+import { ErrorState } from '../ui/ErrorState';
+import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 import { formatLabel } from './format';
@@ -57,13 +59,21 @@ export function MyListScreen() {
         header={tabs
           .filter((t) => t.count || t.status === 'CURRENT' || t.status === 'PLANNING')
           .map((t, i) => (
-            <Chip key={t.status} label={`${t.label}  ${t.count}`} selected={status === t.status} autoFocus={i === 0} onPress={() => setStatus(t.status)} />
+            <Chip
+              key={t.status}
+              label={`${t.label} · ${t.count}`}
+              accessibilityLabel={`${t.label}, ${t.count} titles`}
+              selected={status === t.status}
+              autoFocus={i === 0}
+              onPress={() => setStatus(t.status)}
+            />
           ))}
         note={`AniList · ${account.user.name}`}
         items={items}
         loading={remote.loading && !remote.data}
         error={remote.error}
-        empty="Nothing here yet."
+        empty={{ title: 'Nothing here yet', body: 'Titles you mark this way on AniList show up here.' }}
+        onRetry={remote.retry}
       />
     );
   }
@@ -77,7 +87,8 @@ export function MyListScreen() {
       items={items}
       loading={saved.loading && !saved.data}
       error={saved.error}
-      empty="Add titles from their page with “Add to My List”."
+      empty={{ title: 'Your list is empty', body: 'Found something good? Open its page and choose “Add to My List”.' }}
+      onRetry={saved.retry}
     />
   );
 }
@@ -88,7 +99,7 @@ function SignInPrompt() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
       <Button autoFocus size="sm" label="Sign in to AniList" onPress={() => nav.push({ name: 'signin' })} />
-      <Text variant="label" size={theme.panel === 'solid' ? 14 : 18} color={theme.colors.textMuted}>
+      <Text variant="label" color={theme.colors.textMuted}>
         Use your AniList lists here instead of this TV’s.
       </Text>
     </View>
@@ -103,6 +114,7 @@ function ListLayout({
   loading,
   error,
   empty,
+  onRetry,
 }: {
   crumb: string;
   header: React.ReactNode;
@@ -110,11 +122,11 @@ function ListLayout({
   items: Item[];
   loading: boolean;
   error?: Error;
-  empty: string;
+  empty: { title: string; body: string };
+  onRetry: () => void;
 }) {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
   const scroll = useRef<ScrollViewInstance>(null);
 
@@ -122,21 +134,32 @@ function ListLayout({
     <View style={StyleSheet.absoluteFill}>
       <FrameMarks crumb={crumb} />
       <TopNav active="mylist" />
-      <View style={{ position: 'absolute', top: graphic ? 160 : 150, left: 80, right: 80, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+      <View
+        style={{
+          position: 'absolute',
+          top: theme.layout.contentTop,
+          left: 80,
+          right: 80,
+          flexDirection: 'row',
+          gap: 12,
+          alignItems: 'center',
+        }}
+      >
         {header}
         <View style={{ flex: 1 }} />
-        <Text variant="label" size={graphic ? 14 : 18} color={c.textMuted}>
+        <Text variant="label" color={c.textMuted}>
           {loading ? 'Loading…' : `${note}  ·  ${items.length} titles`}
         </Text>
       </View>
       <ScrollView
         ref={scroll}
-        style={{ position: 'absolute', top: graphic ? 226 : 216, left: 66, right: 66, bottom: 0 }}
+        style={{ position: 'absolute', top: theme.layout.contentTop + 66, left: 66, right: 66, bottom: 0 }}
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 32, rowGap: 32, padding: 14, paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
       >
-        {error && <Text color={c.textMuted}>{`Couldn't load My List: ${error.message}`}</Text>}
-        {!loading && !error && !items.length && <Text color={c.textMuted}>{empty}</Text>}
+        {error && <ErrorState compact error={error} service="AniList" title="Couldn't load My List" onRetry={onRetry} />}
+        {loading && <PosterSkeletons count={COLS} width={CARD_W} height={CARD_H} />}
+        {!loading && !error && !items.length && <Empty title={empty.title} body={empty.body} />}
         {items.map(({ media, tag }, i) => (
           <MediaCard
             key={media.id}

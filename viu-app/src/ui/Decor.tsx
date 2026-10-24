@@ -14,10 +14,19 @@ export function FrameMarks({ crumb }: { crumb?: string }) {
     <>
       <View
         pointerEvents="none"
-        style={{ position: 'absolute', top: 24, left: 24, right: 24, bottom: 24, borderWidth: 1, borderColor: 'rgba(232,228,218,0.16)' }}
+        style={{
+          position: 'absolute',
+          top: 24,
+          left: 24,
+          right: 24,
+          bottom: 24,
+          borderWidth: 1,
+          borderColor: theme.colors.outline,
+          opacity: 0.4,
+        }}
       />
       {crumb && (
-        <Text variant="label" size={13} color={theme.colors.textMuted} style={{ position: 'absolute', top: 34, left: 80, letterSpacing: 2 }}>
+        <Text variant="meta" color={theme.colors.textMuted} style={{ position: 'absolute', top: 30, left: 80 }}>
           {crumb}
         </Text>
       )}

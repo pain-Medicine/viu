@@ -5,9 +5,11 @@ import { Airing, airingBetween, displayTitle } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
 import { useSettings } from '../state/settings';
-import { Art } from '../ui/Art';
+import { Art, Skeleton } from '../ui/Art';
 import { Chip } from '../ui/Chip';
 import { FrameMarks, Hazard } from '../ui/Decor';
+import { Empty } from '../ui/Empty';
+import { ErrorState } from '../ui/ErrorState';
 import { Focusable } from '../ui/Focusable';
 import { Panel } from '../ui/Panel';
 import { Text } from '../ui/Text';
@@ -45,12 +47,14 @@ function untilLabel(unix: number, now: number): string {
 export function ScheduleScreen() {
   const { theme } = useSettings();
   const c = theme.colors;
-  const graphic = theme.panel === 'solid';
   const nav = useNav();
 
   // Fixed for the screen's lifetime so the cache key stays stable.
   const [today] = useState(() => startOfDay(new Date()));
-  const days = useMemo(() => Array.from({ length: DAYS }, (_, i) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + i)), [today]);
+  const days = useMemo(
+    () => Array.from({ length: DAYS }, (_, i) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + i)),
+    [today],
+  );
   const from = Math.floor(today.getTime() / 1000);
   const to = Math.floor(days[DAYS - 1].getTime() / 1000) + 86400;
   const schedule = useAsync(`schedule:${from}`, () => airingBetween(from, to));
@@ -87,7 +91,17 @@ export function ScheduleScreen() {
       <FrameMarks crumb={`VIU.TV / SCHEDULE / ${dayLabel(days[dayIndex], dayIndex).toUpperCase()}`} />
       <TopNav active="schedule" />
 
-      <View style={{ position: 'absolute', top: graphic ? 160 : 150, left: 80, right: 80, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+      <View
+        style={{
+          position: 'absolute',
+          top: theme.layout.contentTop,
+          left: 80,
+          right: 80,
+          flexDirection: 'row',
+          gap: 12,
+          alignItems: 'center',
+        }}
+      >
         {days.map((d, i) => (
           <Chip
             key={i}
@@ -101,15 +115,33 @@ export function ScheduleScreen() {
           />
         ))}
         <View style={{ flex: 1 }} />
-        <Text variant="label" size={graphic ? 14 : 18} color={c.textMuted}>
+        <Text variant="label" color={c.textMuted}>
           {schedule.loading ? 'Loading…' : `${list.length} episodes`}
         </Text>
       </View>
 
-      <Panel style={{ position: 'absolute', top: graphic ? 240 : 226, left: 56, right: 56, bottom: 40, padding: 22 }}>
-        <ScrollView ref={scroll} onContentSizeChange={toUpcoming} style={{ flex: 1 }} contentContainerStyle={{ gap: 8, padding: 10 }} showsVerticalScrollIndicator={false}>
-          {schedule.error && <Text color={c.featureMuted}>{`Couldn't load the schedule: ${schedule.error.message}`}</Text>}
-          {!schedule.loading && !schedule.error && !list.length && <Text color={c.featureMuted}>Nothing airs on this day.</Text>}
+      <Panel style={{ position: 'absolute', top: theme.layout.contentTop + 80, left: 56, right: 56, bottom: 40, padding: 22 }}>
+        <ScrollView
+          ref={scroll}
+          onContentSizeChange={toUpcoming}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ gap: 8, padding: 10 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {schedule.error && (
+            <ErrorState
+              compact
+              autoFocus={false}
+              error={schedule.error}
+              service="AniList"
+              title="Couldn't load the schedule"
+              onRetry={schedule.retry}
+            />
+          )}
+          {schedule.loading && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} style={{ height: 112, marginBottom: 8 }} />)}
+          {!schedule.loading && !schedule.error && !list.length && (
+            <Empty title="A quiet day" body="Nothing on AniList airs on this day. Try another one." />
+          )}
           {list.map((a, i) => (
             <Focusable
               key={a.id}
@@ -117,6 +149,7 @@ export function ScheduleScreen() {
               radius={theme.shape.radiusMd}
               onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, (i - 1) * ROW_STEP), animated: true })}
               onPress={() => nav.push({ name: 'details', mediaId: a.media.id })}
+              accessibilityLabel={`${timeLabel(a.airingAt)}, ${displayTitle(a.media)}, episode ${a.episode}, ${untilLabel(a.airingAt, now)}`}
             >
               {(focused) => (
                 <View
@@ -126,11 +159,11 @@ export function ScheduleScreen() {
                     gap: 28,
                     padding: 14,
                     borderRadius: theme.shape.radiusMd,
-                    backgroundColor: focused ? (graphic ? 'rgba(12,12,14,0.08)' : 'rgba(255,218,210,0.14)') : 'transparent',
+                    backgroundColor: focused ? c.rowFocus : 'transparent',
                     opacity: a.airingAt <= now ? 0.7 : 1,
                   }}
                 >
-                  <Text variant={graphic ? 'display' : 'bodyBold'} size={graphic ? 44 : 32} color={c.featureText} style={{ width: 120 }}>
+                  <Text variant="numeral" color={c.featureText} style={{ width: 120 }}>
                     {timeLabel(a.airingAt)}
                   </Text>
                   <Art
@@ -139,17 +172,25 @@ export function ScheduleScreen() {
                     style={{ width: 176, height: 99, borderRadius: Math.max(0, theme.shape.radiusMd - 6) }}
                   />
                   <View style={{ flex: 1, gap: 6 }}>
-                    <Text variant={graphic ? 'title' : 'bodyBold'} size={graphic ? 28 : 24} color={c.featureText} numberOfLines={1}>
+                    <Text variant="item" color={c.featureText} numberOfLines={1}>
                       {displayTitle(a.media)}
                     </Text>
-                    <Text variant="label" size={graphic ? 14 : 18} color={c.featureMuted}>
-                      {[`Episode ${a.episode}${a.media.episodes ? ` of ${a.media.episodes}` : ''}`, formatLabel(a.media), a.media.studios.nodes[0]?.name]
+                    <Text variant="label" color={c.featureMuted} numberOfLines={1}>
+                      {[
+                        `Episode ${a.episode}${a.media.episodes ? ` of ${a.media.episodes}` : ''}`,
+                        formatLabel(a.media),
+                        a.media.studios.nodes[0]?.name,
+                      ]
                         .filter(Boolean)
                         .join('  ·  ')}
                     </Text>
                   </View>
                   <Hazard color={c.featureText} style={{ width: 120 }} />
-                  <Text variant="label" size={graphic ? 14 : 18} color={a.airingAt <= now ? c.featureMuted : graphic ? c.featureText : c.primary} style={{ width: 150, textAlign: 'right', paddingRight: 12 }}>
+                  <Text
+                    variant="label"
+                    color={a.airingAt <= now ? c.featureMuted : c.featureAccent}
+                    style={{ width: 170, textAlign: 'right', paddingRight: 12 }}
+                  >
                     {untilLabel(a.airingAt, now)}
                   </Text>
                 </View>

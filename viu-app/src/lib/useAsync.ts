@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 // Results stay cached for a while, so stepping back to a screen doesn't
 // refetch or flash a loading state. They expire because stream links are
@@ -20,10 +20,19 @@ export interface AsyncState<T> {
   data: T | undefined;
   error: Error | undefined;
   loading: boolean;
+  // Asks again, skipping the cache. For "Try again" after a failure.
+  retry: () => void;
 }
 
+type State<T> = Omit<AsyncState<T>, 'retry'>;
+
 export function useAsync<T>(key: string | null, load: () => Promise<T>): AsyncState<T> {
-  const [state, setState] = useState<AsyncState<T>>(() => {
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    if (key) cache.delete(key);
+    setAttempt((n) => n + 1);
+  }, [key]);
+  const [state, setState] = useState<State<T>>(() => {
     const hit = cached<T>(key);
     return { data: hit?.data, error: undefined, loading: !!key && !hit };
   });
@@ -55,7 +64,7 @@ export function useAsync<T>(key: string | null, load: () => Promise<T>): AsyncSt
     };
     // The key identifies the request; `load` is recreated every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, attempt]);
 
-  return state;
+  return useMemo(() => ({ ...state, retry }), [state, retry]);
 }

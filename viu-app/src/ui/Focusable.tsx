@@ -1,20 +1,31 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { type HostInstance, Platform, Pressable, StyleProp, View, ViewStyle } from 'react-native';
+import { Animated, Easing, type HostInstance, Platform, Pressable, StyleProp, View, ViewStyle } from 'react-native';
 
+import { useReduceMotion } from '../lib/useReduceMotion';
 import { useTheme } from '../state/settings';
 import { CornerBrackets } from './Shapes';
+import { useSurface } from './Surface';
 
 interface Props {
   onPress?: () => void;
   onFocus?: () => void;
+  onBlur?: () => void;
   style?: StyleProp<ViewStyle>;
   // Corner radius of the focused content, so the ring can follow it.
   radius?: number;
-  // Takes focus when the screen opens (D-pad starting point).
+  // Takes focus when the screen opens (D-pad starting point), and again
+  // whenever this turns from false to true.
   autoFocus?: boolean;
   // Grows the item slightly while focused.
   lift?: boolean;
+  // Chosen option in a group (a chip, a tab, a theme).
+  selected?: boolean;
+  // Still focusable, so a remote can land on it and read why, but does nothing.
+  disabled?: boolean;
+  // False takes it out of D-pad focus entirely, such as hidden player controls.
+  focusable?: boolean;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
   children: React.ReactNode | ((focused: boolean) => React.ReactNode);
 }
 
@@ -22,67 +33,131 @@ export interface FocusableHandle {
   focus: () => void;
 }
 
+type Focusing = { focus?: () => void; requestTVFocus?: () => void };
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const nativeDriver = Platform.OS !== 'web';
+const LIFT = 1.06;
+const DURATION = 160;
+
 // The one place that decides what "focused" looks like. Every interactive
 // element goes through here so both themes and both platforms stay consistent.
+// Focus is the app's one animated moment: the item lifts and the ring fades in
+// with a short ease-out, or snaps when the system asks for less motion.
 export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
-  { onPress, onFocus, style, radius = 0, autoFocus, lift = true, accessibilityLabel, children },
+  {
+    onPress,
+    onFocus,
+    onBlur,
+    style,
+    radius = 0,
+    autoFocus,
+    lift = true,
+    selected,
+    disabled,
+    focusable = true,
+    accessibilityLabel,
+    accessibilityHint,
+    children,
+  },
   ref,
 ) {
   const theme = useTheme();
+  const surface = useSurface();
+  const reduceMotion = useReduceMotion();
   const [focused, setFocused] = useState(false);
+  // The ring stays mounted while it fades out, and not at all otherwise, so
+  // a screen full of keys or cards doesn't carry hundreds of idle rings.
+  const [ringOn, setRingOn] = useState(false);
   const inner = useRef<HostInstance>(null);
+  const progress = useRef(new Animated.Value(0)).current;
 
-  useImperativeHandle(ref, () => ({ focus: () => (inner.current as unknown as HTMLElement)?.focus?.() }));
+  const focusNow = () => {
+    const el = inner.current as unknown as Focusing | null;
+    if (Platform.OS === 'web') el?.focus?.();
+    else (el?.requestTVFocus ?? el?.focus)?.call(el);
+  };
+  useImperativeHandle(ref, () => ({ focus: focusNow }));
 
   useEffect(() => {
-    if (autoFocus && Platform.OS === 'web') {
-      const t = setTimeout(() => (inner.current as unknown as HTMLElement)?.focus?.(), 50);
-      return () => clearTimeout(t);
+    if (!autoFocus || !focusable) return;
+    // Native TV builds take the first focus from hasTVPreferredFocus; later
+    // ones, and the web, need asking.
+    const t = setTimeout(focusNow, 50);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFocus, focusable]);
+
+  useEffect(() => {
+    const to = focused ? 1 : 0;
+    if (focused) setRingOn(true);
+    if (reduceMotion) {
+      progress.setValue(to);
+      if (!focused) setRingOn(false);
+      return;
     }
-  }, [autoFocus]);
+    const anim = Animated.timing(progress, {
+      toValue: to,
+      duration: DURATION,
+      easing: Easing.out(Easing.exp),
+      useNativeDriver: nativeDriver,
+    });
+    anim.start(({ finished }) => {
+      if (finished && !focused) setRingOn(false);
+    });
+    return () => anim.stop();
+  }, [focused, reduceMotion, progress]);
 
   const gap = 8;
-  const tvProps = Platform.isTV ? { hasTVPreferredFocus: !!autoFocus } : {};
+  const tvProps = Platform.isTV ? { hasTVPreferredFocus: !!autoFocus && focusable } : {};
+  const color = surface === 'feature' ? theme.colors.featureFocus : theme.colors.focus;
+  const scale = lift ? progress.interpolate({ inputRange: [0, 1], outputRange: [1, LIFT] }) : 1;
 
   return (
-    <Pressable
+    <AnimatedPressable
       ref={inner}
       {...tvProps}
+      focusable={focusable}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      onPress={onPress}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ selected, disabled }}
+      onPress={disabled ? undefined : onPress}
       onFocus={() => {
         setFocused(true);
         onFocus?.();
       }}
-      onBlur={() => setFocused(false)}
+      onBlur={() => {
+        setFocused(false);
+        onBlur?.();
+      }}
       style={[
         style,
-        { transform: [{ scale: focused && lift ? 1.06 : 1 }] },
+        { transform: [{ scale }] },
+        disabled ? { opacity: 0.45 } : null,
         Platform.OS === 'web' ? ({ outlineStyle: 'none' } as unknown as ViewStyle) : null,
       ]}
     >
       {typeof children === 'function' ? children(focused) : children}
-      {focused &&
-        (theme.focus === 'ring' ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: -gap,
-              left: -gap,
-              right: -gap,
-              bottom: -gap,
-              borderRadius: radius >= 999 ? 999 : radius + gap,
-              borderWidth: 4,
-              borderColor: theme.colors.focus,
-            }}
-          />
-        ) : (
-          <View pointerEvents="none" style={{ position: 'absolute', top: -gap, left: -gap, right: -gap, bottom: -gap }}>
-            <CornerBrackets color={theme.colors.focus} />
-          </View>
-        ))}
-    </Pressable>
+      {ringOn && (
+        <Animated.View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: -gap, left: -gap, right: -gap, bottom: -gap, opacity: progress }}
+        >
+          {theme.focus === 'ring' ? (
+            <View
+              style={{
+                flex: 1,
+                borderRadius: radius >= 999 ? 999 : radius + gap,
+                borderWidth: 4,
+                borderColor: color,
+              }}
+            />
+          ) : (
+            <CornerBrackets color={color} arm={20} width={4} />
+          )}
+        </Animated.View>
+      )}
+    </AnimatedPressable>
   );
 });

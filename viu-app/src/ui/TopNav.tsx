@@ -9,7 +9,7 @@ import { Text } from './Text';
 
 type Section = 'home' | 'browse' | 'schedule' | 'mylist' | 'search' | 'settings';
 
-const ITEMS: { id: Exclude<Section, 'settings'>; label: string; icon?: IconName }[] = [
+const ITEMS: { id: Exclude<Section, 'settings'>; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'browse', label: 'Browse', icon: 'grid' },
   { id: 'schedule', label: 'Schedule', icon: 'calendar' },
@@ -17,17 +17,18 @@ const ITEMS: { id: Exclude<Section, 'settings'>; label: string; icon?: IconName 
   { id: 'search', label: 'Search', icon: 'search' },
 ];
 
+const ITEM_H = 60;
+
 export function TopNav({ active }: { active: Section }) {
   const theme = useTheme();
   const c = theme.colors;
   const nav = useNav();
-  const graphic = theme.panel === 'solid';
 
   return (
     <View
       style={{
         position: 'absolute',
-        top: graphic ? 60 : 40,
+        top: theme.layout.navTop,
         left: 80,
         right: 80,
         flexDirection: 'row',
@@ -36,47 +37,53 @@ export function TopNav({ active }: { active: Section }) {
       }}
     >
       <View style={{ width: 300, flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
-        <Text variant="display" size={graphic ? 52 : 36} color={c.primary} style={{ lineHeight: graphic ? 52 : 44, letterSpacing: graphic ? 1 : -1.8 }}>
+        <Text variant="logo" color={c.primary}>
           viu
         </Text>
-        {graphic && (
-          <Text variant="label" size={13} color={c.textMuted}>
+        {theme.decor.indexLabels && (
+          <Text variant="meta" color={c.textMuted}>
             Anime / TV
           </Text>
         )}
       </View>
 
-      <Panel kind="chrome" style={{ flexDirection: 'row', alignItems: 'center', gap: graphic ? 0 : 6, padding: graphic ? 0 : 8 }}>
+      <Panel
+        kind="chrome"
+        style={{ flexDirection: 'row', alignItems: 'center', gap: theme.shape.navPadding ? 6 : 0, padding: theme.shape.navPadding }}
+      >
         {ITEMS.map((item, i) => {
           const on = item.id === active;
+          const fg = on ? c.onSelected : c.navText;
           return (
-            <Focusable key={item.id} onPress={() => nav.goTo({ name: item.id })} radius={theme.shape.button} lift={false}>
+            <Focusable
+              key={item.id}
+              onPress={() => nav.goTo({ name: item.id })}
+              radius={theme.shape.button}
+              lift={false}
+              selected={on}
+              accessibilityLabel={item.label}
+            >
               <View
                 style={{
-                  height: graphic ? 60 : 56,
-                  paddingHorizontal: graphic ? 24 : 24,
+                  minHeight: ITEM_H,
+                  paddingHorizontal: 24,
                   borderRadius: theme.shape.button,
                   backgroundColor: on ? c.selected : 'transparent',
-                  borderLeftWidth: graphic && i > 0 ? 1 : 0,
+                  borderLeftWidth: theme.style.navDividers && i > 0 ? 1 : 0,
                   borderColor: c.outline,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 10,
                 }}
               >
-                {graphic ? (
-                  <Text variant={on ? 'labelBold' : 'label'} size={13} color={on ? c.onSelected : c.textMuted}>
+                {theme.decor.indexLabels ? (
+                  <Text variant={on ? 'metaBold' : 'meta'} color={on ? c.onSelected : c.textMuted}>
                     {String(i + 1).padStart(2, '0')}
                   </Text>
                 ) : (
-                  item.icon && <Icon name={item.icon} size={24} color={on ? c.onSelected : c.textMuted} />
+                  <Icon name={item.icon} size={24} color={fg} />
                 )}
-                <Text
-                  variant={graphic ? 'title' : 'bodyBold'}
-                  size={graphic ? 26 : 22}
-                  color={on ? c.onSelected : graphic ? c.text : c.textMuted}
-                  style={{ letterSpacing: graphic ? 1.5 : -0.2, lineHeight: graphic ? 30 : 28 }}
-                >
+                <Text variant="nav" color={fg}>
                   {item.label}
                 </Text>
               </View>
@@ -86,17 +93,14 @@ export function TopNav({ active }: { active: Section }) {
       </Panel>
 
       <View style={{ width: 300, flexDirection: 'row', justifyContent: 'flex-end' }}>
-        <Focusable onPress={() => nav.goTo({ name: 'settings' })} radius={theme.shape.button} accessibilityLabel="Settings">
-          <Panel
-            kind="chrome"
-            style={{
-              width: graphic ? 60 : 64,
-              height: graphic ? 60 : 64,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="settings" size={26} color={active === 'settings' ? c.primary : c.textMuted} square={graphic} />
+        <Focusable
+          onPress={() => nav.goTo({ name: 'settings' })}
+          radius={theme.shape.button}
+          selected={active === 'settings'}
+          accessibilityLabel="Settings"
+        >
+          <Panel kind="chrome" style={{ width: 64, height: 64, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="settings" size={28} color={active === 'settings' ? c.primary : c.navText} />
           </Panel>
         </Focusable>
       </View>
