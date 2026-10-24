@@ -40,7 +40,7 @@ yarn-error.*
 /ios
 /android
 
-# Built from ../viu_media/assets/tunnel by npm run build:tunnel
+# Built from ../viu_media/assets/tunnel by scripts/build.mjs
 /modules/viu-network/android/libs/
 
 # The repo root ignores lib/ (Python builds); this app keeps source in src/lib

@@ -37,7 +37,6 @@
     "start": "expo start",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "build:tunnel": "node scripts/build-tunnel.mjs",
     "build:web": "node scripts/build.mjs web",
     "build:android-tv": "node scripts/build.mjs android-tv",
     "build:android": "node scripts/build.mjs android",

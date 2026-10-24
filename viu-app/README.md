@@ -60,7 +60,7 @@ Every target builds on your own machine with one command. There's no cloud CI: n
 | Target | Command | Output in `dist/` | Needs |
 | --- | --- | --- | --- |
 | Web | `npm run build:web` | `web/` static site | Node |
-| Android TV | `npm run build:android-tv` | `viu-android-tv-<version>.apk` | JDK 17, Android SDK, plus Go and the NDK for the first build |
+| Android TV | `npm run build:android-tv` | `viu-android-tv-<version>.apk` | JDK 17, Android SDK, Go, the NDK and gomobile |
 | Android phone/tablet | `npm run build:android` | `viu-android-<version>.apk` | JDK 17, Android SDK |
 | Google Play bundle | `npm run build:android:aab` | `viu-android-<version>.aab` | JDK 17, Android SDK |
 | iPhone/iPad | `npm run build:ios` | `viu-ios-<version>-unsigned.ipa` | macOS, Xcode |
@@ -71,14 +71,12 @@ The native `android/` and `ios/` folders aren't committed. Each build generates 
 
 The Android TV and phone apps have different application IDs (`media.viu.app.tv` and `media.viu.app`), so you can install both on one device. The TV build adds the Android TV launcher entry and banner. It can still be installed on a phone, which is handy for testing.
 
-The Android builds include the WireGuard library from the Go code in `../viu_media/assets/tunnel` (the same code the terminal app runs). It isn't committed. The first Android build runs `npm run build:tunnel` for you, which needs Go 1.24 or newer, the Android NDK (SDK Manager → SDK Tools → NDK), and gomobile:
+The Android builds include the WireGuard library from the Go code in `../viu_media/assets/tunnel` (the same code the terminal app runs). It isn't committed. The Android build commands build it for you, and build it again whenever the Go code is newer than the last build, so there's no separate step. That needs Go 1.24 or newer, the Android NDK (SDK Manager → SDK Tools → NDK), and gomobile:
 
 ```sh
 go install golang.org/x/mobile/cmd/gomobile@latest
 gomobile init
 ```
-
-After that, run `npm run build:tunnel` again only when the Go code changes.
 
 ### Getting the Android TV APK onto a TV
 

@@ -15,7 +15,7 @@ android {
 }
 
 dependencies {
-  // The WireGuard tunnel, built from viu_media/assets/tunnel by `npm run build:tunnel`.
+  // The WireGuard tunnel, built from viu_media/assets/tunnel by scripts/build.mjs.
   // A library can't bundle a local .aar, so the app links it (plugins/withViuTunnel.js).
   compileOnly files('libs/viutunnel.aar')
 }

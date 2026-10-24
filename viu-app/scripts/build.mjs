@@ -6,13 +6,16 @@
 //   web          static site in dist/web
 //   android-tv   Android TV APK (sideload with adb or a file manager)
 //   android      phone/tablet APK, or an AAB for Google Play with --aab
+//                (both Android targets build the WireGuard library from Go
+//                first whenever its code changed)
 //   ios          unsigned iPhone/iPad IPA (macOS + Xcode only)
 //   windows      not set up yet (placeholder so it slots in later)
 //   all          every target this machine can build
 //
 // Output lands in dist/ as viu-<target>-<version>.<ext>.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -74,11 +77,61 @@ function checkAndroidTools() {
   }
 }
 
-// The WireGuard library is built from Go, not committed. Build it once if it's missing.
-function checkTunnel() {
-  if (existsSync(join(root, 'modules/viu-network/android/libs/viutunnel.aar'))) return;
-  console.log('WireGuard library not built yet, building it first (needs Go and the Android NDK).');
-  run('node', [join(root, 'scripts/build-tunnel.mjs')]);
+// The WireGuard library is built from the Go code the terminal app also runs
+// (../viu_media/assets/tunnel) and isn't committed. It's built when missing
+// and rebuilt whenever that code is newer than the built library.
+const tunnelSource = resolve(root, '..', 'viu_media', 'assets', 'tunnel');
+const tunnelAar = join(root, 'modules', 'viu-network', 'android', 'libs', 'viutunnel.aar');
+
+function newestTunnelSource(dir = tunnelSource) {
+  let newest = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) newest = Math.max(newest, newestTunnelSource(path));
+    else if (/^go\.(mod|sum)$/.test(entry.name) || (entry.name.endsWith('.go') && !entry.name.endsWith('_test.go'))) {
+      newest = Math.max(newest, statSync(path).mtimeMs);
+    }
+  }
+  return newest;
+}
+
+function buildTunnel() {
+  if (!existsSync(join(tunnelSource, 'tunnel.go'))) {
+    console.error(`Tunnel source not found at ${tunnelSource}. Run this from viu-app inside the Viu repo.`);
+    process.exit(1);
+  }
+  const built = existsSync(tunnelAar);
+  if (built && statSync(tunnelAar).mtimeMs >= newestTunnelSource()) return;
+  console.log(built ? '\nThe WireGuard Go code changed, rebuilding the library.' : '\nBuilding the WireGuard library from Go.');
+
+  if (spawnSync('go', ['version'], { shell: isWindows }).status !== 0) {
+    console.error('Go not found. Install Go 1.24 or newer and make sure `go` is on your PATH.');
+    process.exit(1);
+  }
+  // gomobile lands in GOPATH/bin, which often isn't on PATH. It also runs
+  // gobind, which sits next to it.
+  const gopath = spawnSync('go', ['env', 'GOPATH'], { encoding: 'utf8', shell: isWindows }).stdout?.trim() || join(homedir(), 'go');
+  const local = join(gopath, 'bin', isWindows ? 'gomobile.exe' : 'gomobile');
+  const gomobile = existsSync(local) ? local : 'gomobile';
+  if (spawnSync(gomobile, ['version'], { shell: isWindows }).error) {
+    console.error('gomobile not found. Install it with:\n  go install golang.org/x/mobile/cmd/gomobile@latest\n  gomobile init');
+    process.exit(1);
+  }
+  mkdirSync(join(tunnelAar, '..'), { recursive: true });
+  run(
+    gomobile,
+    [
+      'bind',
+      // 32-bit arm is still common on TV sticks; amd64 is for the emulator.
+      '-target=android/arm64,android/arm,android/amd64',
+      '-androidapi', '24',
+      '-javapkg', 'media.viu',
+      '-ldflags=-s -w',
+      '-o', tunnelAar,
+      '.',
+    ],
+    { cwd: tunnelSource, env: { PATH: [join(gopath, 'bin'), process.env.PATH].join(isWindows ? ';' : ':') } },
+  );
 }
 
 function build(target) {
@@ -98,7 +151,7 @@ switch (target) {
       process.exit(1);
     }
     checkAndroidTools();
-    checkTunnel();
+    buildTunnel();
     prebuild('android', tv);
     gradle(aab ? 'bundleRelease' : 'assembleRelease');
     const from = aab
