@@ -13,6 +13,7 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
 import { type HostInstance, Platform, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { NavigationProvider, Route, ScreenActiveContext, useNav } from './src/nav/navigation';
 import { installSpatialNavigation } from './src/nav/spatialWeb';
@@ -57,22 +58,24 @@ export default function App() {
   }, []);
 
   return (
-    <NetworkProvider>
-      <NetworkGate>
-        <SettingsProvider>
-          <AccountProvider>
-            <HistoryProvider>
-              <LocalListProvider>
-                <NavigationProvider>
-                  <StatusBar hidden style="light" />
-                  <Root ready={fontsLoaded} />
-                </NavigationProvider>
-              </LocalListProvider>
-            </HistoryProvider>
-          </AccountProvider>
-        </SettingsProvider>
-      </NetworkGate>
-    </NetworkProvider>
+    <SafeAreaProvider style={{ backgroundColor: '#000' }}>
+      <NetworkProvider>
+        <NetworkGate>
+          <SettingsProvider>
+            <AccountProvider>
+              <HistoryProvider>
+                <LocalListProvider>
+                  <NavigationProvider>
+                    <StatusBar hidden style="light" />
+                    <Root ready={fontsLoaded} />
+                  </NavigationProvider>
+                </LocalListProvider>
+              </HistoryProvider>
+            </AccountProvider>
+          </SettingsProvider>
+        </NetworkGate>
+      </NetworkProvider>
+    </SafeAreaProvider>
   );
 }
 

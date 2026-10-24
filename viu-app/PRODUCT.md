@@ -14,7 +14,7 @@ Android TV is the product. Everything else is a bonus that comes from sharing th
 
 - **Android TV:** the design target. Every screen is laid out on a 1920×1080 canvas and driven by a D-pad remote.
 - **Web:** for browsing, searching and development. Streaming needs a separate pass-through proxy, because browsers block what the provider needs.
-- **Android phone/tablet and iOS:** today these run the TV layout in landscape, scaled to fit. Phones are to get their own touch-first layout (Dave, 2026-10-24); it is not built yet. That layout restructures for touch and portrait, it doesn't shrink the TV screens.
+- **Android phone/tablet and iOS:** landscape only, no portrait layout (Dave, 2026-10-24). The canvas follows the screen's shape, screens reflow on short phones and 4:3 tablets, Home scrolls, rows swipe, and focus rings show only when a remote or keyboard is in use.
 
 ## Who uses it and where
 

@@ -17,7 +17,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: 'viu',
   scheme: 'viu',
   version,
-  // The UI is laid out for a 16:9 screen, so phones run it in landscape too.
+  // Phones and tablets are landscape only; the layout adapts to the screen's shape.
   orientation: 'landscape',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',

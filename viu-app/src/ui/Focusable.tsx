@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Animated, Easing, type HostInstance, Platform, Pressable, StyleProp, View, ViewStyle } from 'react-native';
 
+import { noteKeyFocus, useInputMode } from '../lib/inputMode';
 import { useReduceMotion } from '../lib/useReduceMotion';
 import { useTheme } from '../state/settings';
 import { CornerBrackets } from './Shapes';
@@ -33,7 +34,7 @@ export interface FocusableHandle {
   focus: () => void;
 }
 
-type Focusing = { focus?: () => void; requestTVFocus?: () => void };
+type Focusing = { focus?: (options?: { preventScroll?: boolean }) => void; requestTVFocus?: () => void };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const nativeDriver = Platform.OS !== 'web';
@@ -65,7 +66,12 @@ export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
   const theme = useTheme();
   const surface = useSurface();
   const reduceMotion = useReduceMotion();
-  const [focused, setFocused] = useState(false);
+  const [hasFocus, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  // A tap or click focuses too, but only a remote or keyboard needs to see
+  // where focus is.
+  const keys = useInputMode() === 'keys';
+  const focused = hasFocus && keys;
   // The ring stays mounted while it fades out, and not at all otherwise, so
   // a screen full of keys or cards doesn't carry hundreds of idle rings.
   const [ringOn, setRingOn] = useState(false);
@@ -74,13 +80,16 @@ export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
 
   const focusNow = () => {
     const el = inner.current as unknown as Focusing | null;
-    if (Platform.OS === 'web') el?.focus?.();
+    // The page shouldn't jump to a starting point the viewer may never use.
+    if (Platform.OS === 'web') el?.focus?.({ preventScroll: true });
     else (el?.requestTVFocus ?? el?.focus)?.call(el);
   };
   useImperativeHandle(ref, () => ({ focus: focusNow }));
 
   useEffect(() => {
-    if (!autoFocus || !focusable) return;
+    // A phone or tablet starts with nothing focused, the way touch apps do;
+    // a keyboard picks up from wherever it first lands.
+    if (!autoFocus || !focusable || (Platform.OS !== 'web' && !Platform.isTV)) return;
     // Native TV builds take the first focus from hasTVPreferredFocus; later
     // ones, and the web, need asking.
     const t = setTimeout(focusNow, 50);
@@ -123,7 +132,10 @@ export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
       accessibilityHint={accessibilityHint}
       accessibilityState={{ selected, disabled }}
       onPress={disabled ? undefined : onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       onFocus={() => {
+        if (Platform.OS !== 'web' && !Platform.isTV) noteKeyFocus();
         setFocused(true);
         onFocus?.();
       }}
@@ -134,7 +146,7 @@ export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
       style={[
         style,
         { transform: [{ scale }] },
-        disabled ? { opacity: 0.45 } : null,
+        disabled ? { opacity: 0.45 } : pressed && !keys ? { opacity: 0.7 } : null,
         Platform.OS === 'web' ? ({ outlineStyle: 'none' } as unknown as ViewStyle) : null,
       ]}
     >

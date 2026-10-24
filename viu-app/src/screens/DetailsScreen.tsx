@@ -17,11 +17,13 @@ import { Focusable } from '../ui/Focusable';
 import { Icon } from '../ui/Icon';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
+import { useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { metaLine, minutesLeft } from './format';
 
-// One episode row plus the gap between rows.
+// One episode row plus the gap between rows, full size and compact.
 const EP_STEP = 124;
+const EP_STEP_COMPACT = 92;
 
 export function DetailsScreen({ mediaId }: { mediaId: number }) {
   const { theme, settings } = useSettings();
@@ -29,6 +31,14 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
   const nav = useNav();
   const history = useHistory();
   const entry = history.get(mediaId);
+  const stage = useStage();
+  // Less room than the TV design: the cover moves beside the title, the
+  // actions come before the synopsis, and the column scrolls.
+  const compact = stage.narrow || stage.short;
+  const colW = compact ? Math.round(Math.min(760, stage.width * 0.44)) : 760;
+  const panelLeft = 80 + colW + (compact ? 48 : 80);
+  const panelInset = stage.short ? 24 : compact ? 40 : 64;
+  const epStep = compact ? EP_STEP_COMPACT : EP_STEP;
 
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
   const membership = useListMembership(mediaId);
@@ -89,6 +99,34 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
     setTranslation(t);
     setRangeIndex(null);
   };
+  const cover = (width: number, height: number) => (
+    <Art
+      uri={m.coverImage.extraLarge ?? m.coverImage.large}
+      fallback={m.coverImage.color}
+      style={{ width, height, borderRadius: theme.shape.radiusMd, borderWidth: theme.shape.artBorder, borderColor: c.artOutline }}
+    />
+  );
+  const longTitle = displayTitle(m).length > (compact ? 22 : 34);
+  const title = (
+    <Text
+      variant="headline"
+      size={Math.round(theme.text.headline.size * (compact ? 0.72 : 1) * (longTitle ? 0.75 : 1))}
+      numberOfLines={compact ? 3 : 2}
+      style={{ marginTop: compact ? 0 : 6 }}
+    >
+      {displayTitle(m)}
+    </Text>
+  );
+  const meta = (
+    <Text variant="label" color={c.textMuted}>
+      {metaLine(m, { episodes: true, status: true })}
+    </Text>
+  );
+  const synopsis = (
+    <Text color={c.textOnArt} numberOfLines={compact ? undefined : 4}>
+      {plainDescription(m)}
+    </Text>
+  );
   const playLabel = next ? `${next.resume ? 'Resume' : 'Play'} E${next.episode}` : `Play E${episodes[0] ?? 1}`;
 
   return (
@@ -98,7 +136,18 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
       <HeroScrim strength="details" />
       <FrameMarks crumb={`VIU.TV / TITLE / ${m.id}`} />
 
-      <View style={{ position: 'absolute', top: theme.layout.navTop + 20, left: 80, width: 760, gap: 22 }}>
+      <ScrollView
+        style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 80 + colW + 24 }}
+        contentContainerStyle={{
+          paddingTop: theme.layout.navTop + 20,
+          paddingLeft: 80,
+          paddingRight: 24,
+          paddingBottom: 48,
+          gap: compact ? 18 : 22,
+        }}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={compact}
+      >
         <Focusable
           onPress={nav.back}
           lift={false}
@@ -113,37 +162,28 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
             </Text>
           </View>
         </Focusable>
-        <Art
-          uri={m.coverImage.extraLarge ?? m.coverImage.large}
-          fallback={m.coverImage.color}
-          style={{
-            width: 220,
-            height: 330,
-            borderRadius: theme.shape.radiusMd,
-            borderWidth: theme.shape.artBorder,
-            borderColor: c.artOutline,
-          }}
-        />
-        <Text
-          variant="headline"
-          size={displayTitle(m).length > 34 ? Math.round(theme.text.headline.size * 0.75) : undefined}
-          numberOfLines={2}
-          style={{ marginTop: 6 }}
-        >
-          {displayTitle(m)}
-        </Text>
-        <Text variant="label" color={c.textMuted}>
-          {metaLine(m, { episodes: true, status: true })}
-        </Text>
+        {compact ? (
+          <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-end' }}>
+            {cover(150, 225)}
+            <View style={{ flex: 1, gap: 12 }}>
+              {title}
+              {meta}
+            </View>
+          </View>
+        ) : (
+          <>
+            {cover(220, 330)}
+            {title}
+            {meta}
+          </>
+        )}
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-          {m.genres.slice(0, 4).map((g) => (
+          {m.genres.slice(0, compact ? 3 : 4).map((g) => (
             <Chip key={g} label={g} size="sm" />
           ))}
         </View>
-        <Text color={c.textOnArt} numberOfLines={4}>
-          {plainDescription(m)}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 14, marginTop: 6 }}>
+        {!compact && synopsis}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 6 }}>
           {notFound ? (
             <Button autoFocus variant="primary" label={`Try the ${otherLabel.toLowerCase()}`} onPress={() => switchTranslation(other)} />
           ) : (
@@ -174,9 +214,20 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
             Change this title's status on AniList; removing it here would erase your progress.
           </Text>
         )}
-      </View>
+        {compact && synopsis}
+      </ScrollView>
 
-      <Panel style={{ position: 'absolute', top: 64, bottom: 64, left: 920, right: 64, padding: 36, gap: 24 }}>
+      <Panel
+        style={{
+          position: 'absolute',
+          top: panelInset,
+          bottom: panelInset,
+          left: panelLeft,
+          right: panelInset,
+          padding: compact ? 28 : 36,
+          gap: compact ? 18 : 24,
+        }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
           <Text variant="section" color={c.featureText}>
             Episodes
@@ -259,9 +310,10 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
                     media={m}
                     episode={ep}
                     entry={entry}
+                    compact={compact}
                     order={episodes.indexOf(ep)}
                     resumeOrder={entry ? episodes.indexOf(entry.episode) : -1}
-                    onFocus={() => list.current?.scrollTo({ y: Math.max(0, (i - 1) * EP_STEP), animated: true })}
+                    onFocus={() => list.current?.scrollTo({ y: Math.max(0, (i - 1) * epStep), animated: true })}
                     onPress={() => play(ep)}
                   />
                 ))}
@@ -279,15 +331,18 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
 // The page's shape while AniList answers.
 function DetailsSkeleton() {
   const { theme } = useSettings();
+  const stage = useStage();
+  const compact = stage.narrow || stage.short;
+  const colW = compact ? Math.round(Math.min(760, stage.width * 0.44)) : 760;
   return (
     <View style={StyleSheet.absoluteFill}>
       <View style={{ position: 'absolute', top: theme.layout.navTop + 70, left: 80, gap: 22 }}>
         <Skeleton style={{ width: 220, height: 330 }} />
-        <Skeleton style={{ width: 640, height: 64 }} />
-        <Skeleton style={{ width: 460, height: 28 }} />
-        <Skeleton style={{ width: 700, height: 120 }} />
+        <Skeleton style={{ width: colW * 0.84, height: 64 }} />
+        <Skeleton style={{ width: colW * 0.6, height: 28 }} />
+        <Skeleton style={{ width: colW * 0.92, height: 120 }} />
       </View>
-      <Panel style={{ position: 'absolute', top: 64, bottom: 64, left: 920, right: 64, padding: 36, gap: 18 }}>
+      <Panel style={{ position: 'absolute', top: 64, bottom: 64, left: 80 + colW + (compact ? 48 : 80), right: 64, padding: 36, gap: 18 }}>
         <Skeleton style={{ width: 220, height: 36 }} />
         {Array.from({ length: 6 }, (_, i) => (
           <Skeleton key={i} style={{ height: 110 }} />
@@ -320,9 +375,11 @@ function EpisodeRow({
   entry,
   order,
   resumeOrder,
+  compact,
   onFocus,
   onPress,
 }: {
+  compact?: boolean;
   media: Media;
   episode: string;
   entry?: HistoryEntry;
@@ -352,8 +409,8 @@ function EpisodeRow({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 24,
-            padding: 14,
+            gap: compact ? 18 : 24,
+            padding: compact ? 10 : 14,
             borderRadius: theme.shape.radiusMd,
             backgroundColor: focused ? c.rowFocus : 'transparent',
           }}
@@ -362,8 +419,8 @@ function EpisodeRow({
               rather than the same banner twelve times over. */}
           <View
             style={{
-              width: 132,
-              height: 88,
+              width: compact ? 100 : 132,
+              height: compact ? 64 : 88,
               borderRadius: Math.max(0, theme.shape.radiusMd - 6),
               backgroundColor: c.tonal,
               alignItems: 'center',
@@ -379,14 +436,14 @@ function EpisodeRow({
             )}
           </View>
           <View style={{ flex: 1, gap: 6 }}>
-            <Text variant="item" color={c.featureText}>
+            <Text variant="item" color={c.featureText} numberOfLines={1}>
               {`Episode ${episode}`}
             </Text>
             <Text variant="label" color={current ? c.featureAccent : c.featureMuted}>
               {state}
             </Text>
           </View>
-          {media.duration ? (
+          {media.duration && !compact ? (
             <Text variant="meta" color={c.featureMuted} style={{ paddingRight: 12 }}>
               {`${media.duration} min`}
             </Text>

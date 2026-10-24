@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { onConfigReceived, ViuNetwork } from '../../modules/viu-network';
 import { useNav } from '../nav/navigation';
@@ -8,6 +8,7 @@ import { useSettings } from '../state/settings';
 import { Button } from '../ui/Button';
 import { FrameMarks } from '../ui/Decor';
 import { Panel } from '../ui/Panel';
+import { useStage } from '../ui/Stage';
 import { QrCode } from '../ui/QrCode';
 import { Text } from '../ui/Text';
 
@@ -39,6 +40,7 @@ export function VpnImportScreen() {
     };
   }, [update]);
 
+  const stage = useStage();
   const step = (n: string, title: string, body: string) => (
     <View style={{ flexDirection: 'row', gap: 22 }}>
       <Text variant="numeral" color={c.primary} style={{ width: 52 }}>
@@ -54,42 +56,54 @@ export function VpnImportScreen() {
   return (
     <View style={StyleSheet.absoluteFill}>
       <FrameMarks crumb="VIU.TV / SETTINGS / VPN" />
-      <View style={{ position: 'absolute', top: 90, left: 80, right: 80, gap: 14 }}>
-        <Text variant="page">Add a WireGuard VPN</Text>
-        <Text variant="bodyLg" color={c.textMuted}>
-          Only Viu uses the VPN. Other apps on this TV keep their normal connection.
-        </Text>
-      </View>
-
-      <View style={{ position: 'absolute', top: 330, left: 80, width: 1060, gap: 36 }}>
-        {step(
-          '1',
-          'Get a WireGuard config on your phone',
-          'Any WireGuard .conf works. For Proton VPN: account.protonvpn.com → Downloads → WireGuard configuration, then download one.',
-        )}
-        {step('2', 'Open the page on the right', 'Scan the code with a phone on the same Wi-Fi as this TV, or type the address.')}
-        {step('3', 'Send the file', 'Pick the .conf file (or paste its text) and tap Send to TV. Viu connects right away.')}
-        {received && (
-          <View style={{ flexDirection: 'row', gap: 20, alignItems: 'center', marginLeft: 74 }}>
-            <Text variant="bodyBold" color={c.primary}>
-              {`Got it. Viu now connects through ${received}.`}
-            </Text>
-            <Button variant="primary" size="sm" label="Done" autoFocus onPress={() => nav.back()} />
-          </View>
-        )}
-        {error && (
-          <Text variant="bodyBold" color={c.accent} style={{ marginLeft: 74 }}>
-            {`Couldn't open the import page: ${error}`}
+      <ScrollView
+        style={StyleSheet.absoluteFill}
+        contentContainerStyle={{ paddingTop: stage.short ? 70 : 90, paddingHorizontal: 80, paddingBottom: 64, gap: stage.short ? 40 : 80 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ gap: 14 }}>
+          <Text variant="page">Add a WireGuard VPN</Text>
+          <Text variant="bodyLg" color={c.textMuted}>
+            Only Viu uses the VPN. Other apps on this TV keep their normal connection.
           </Text>
-        )}
-      </View>
+        </View>
 
-      <Panel style={{ position: 'absolute', top: 330, right: 80, width: 560, padding: 40, gap: 24, alignItems: 'center' }}>
-        {url ? <QrCode value={url} size={380} /> : <View style={{ width: 380, height: 380 }} />}
-        <Text variant="label" color={c.featureMuted} style={{ textAlign: 'center' }} selectable>
-          {url ? url.replace('http://', '') : 'Starting…'}
-        </Text>
-      </Panel>
+        <View style={{ flexDirection: 'row', gap: stage.narrow ? 40 : 120, alignItems: 'flex-start' }}>
+          <View style={{ flex: 1, gap: 36 }}>
+            {step(
+              '1',
+              'Get a WireGuard config on your phone',
+              'Any WireGuard .conf works. For Proton VPN: account.protonvpn.com → Downloads → WireGuard configuration, then download one.',
+            )}
+            {step('2', 'Open the page on the right', 'Scan the code with a phone on the same Wi-Fi as this TV, or type the address.')}
+            {step('3', 'Send the file', 'Pick the .conf file (or paste its text) and tap Send to TV. Viu connects right away.')}
+            {received && (
+              <View style={{ flexDirection: 'row', gap: 20, alignItems: 'center', marginLeft: 74 }}>
+                <Text variant="bodyBold" color={c.primary}>
+                  {`Got it. Viu now connects through ${received}.`}
+                </Text>
+                <Button variant="primary" size="sm" label="Done" autoFocus onPress={() => nav.back()} />
+              </View>
+            )}
+            {error && (
+              <Text variant="bodyBold" color={c.accent} style={{ marginLeft: 74 }}>
+                {`Couldn't open the import page: ${error}`}
+              </Text>
+            )}
+          </View>
+
+          <Panel style={{ width: stage.narrow ? 380 : 560, padding: stage.narrow ? 28 : 40, gap: 24, alignItems: 'center' }}>
+            {url ? (
+              <QrCode value={url} size={stage.narrow ? 280 : 380} />
+            ) : (
+              <View style={{ width: stage.narrow ? 280 : 380, height: stage.narrow ? 280 : 380 }} />
+            )}
+            <Text variant="label" color={c.featureMuted} style={{ textAlign: 'center' }} selectable>
+              {url ? url.replace('http://', '') : 'Starting…'}
+            </Text>
+          </Panel>
+        </View>
+      </ScrollView>
     </View>
   );
 }

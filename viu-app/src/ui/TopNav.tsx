@@ -5,6 +5,7 @@ import { useTheme } from '../state/settings';
 import { Focusable } from './Focusable';
 import { Icon, IconName } from './Icon';
 import { Panel } from './Panel';
+import { useStage } from './Stage';
 import { Text } from './Text';
 
 type Section = 'home' | 'browse' | 'schedule' | 'mylist' | 'search' | 'settings';
@@ -23,6 +24,10 @@ export function TopNav({ active }: { active: Section }) {
   const theme = useTheme();
   const c = theme.colors;
   const nav = useNav();
+  // Short of the full design width the labels stay and the icons go, which
+  // keeps every item one tap or press away.
+  const { narrow } = useStage();
+  const side = narrow ? undefined : 300;
 
   return (
     <View
@@ -36,11 +41,11 @@ export function TopNav({ active }: { active: Section }) {
         justifyContent: 'space-between',
       }}
     >
-      <View style={{ width: 300, flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
+      <View style={{ width: side, flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
         <Text variant="logo" color={c.primary}>
           viu
         </Text>
-        {theme.decor.indexLabels && (
+        {theme.decor.indexLabels && !narrow && (
           <Text variant="meta" color={c.textMuted}>
             Anime / TV
           </Text>
@@ -66,7 +71,7 @@ export function TopNav({ active }: { active: Section }) {
               <View
                 style={{
                   minHeight: ITEM_H,
-                  paddingHorizontal: 24,
+                  paddingHorizontal: narrow ? 18 : 24,
                   borderRadius: theme.shape.button,
                   backgroundColor: on ? c.selected : 'transparent',
                   borderLeftWidth: theme.style.navDividers && i > 0 ? 1 : 0,
@@ -76,7 +81,7 @@ export function TopNav({ active }: { active: Section }) {
                   gap: 10,
                 }}
               >
-                {theme.decor.indexLabels ? (
+                {narrow ? null : theme.decor.indexLabels ? (
                   <Text variant={on ? 'metaBold' : 'meta'} color={on ? c.onSelected : c.textMuted}>
                     {String(i + 1).padStart(2, '0')}
                   </Text>
@@ -92,7 +97,7 @@ export function TopNav({ active }: { active: Section }) {
         })}
       </Panel>
 
-      <View style={{ width: 300, flexDirection: 'row', justifyContent: 'flex-end' }}>
+      <View style={{ width: side, flexDirection: 'row', justifyContent: 'flex-end' }}>
         <Focusable
           onPress={() => nav.goTo({ name: 'settings' })}
           radius={theme.shape.button}

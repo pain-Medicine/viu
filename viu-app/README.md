@@ -137,7 +137,7 @@ Every screen is laid out on a fixed 1920×1080 canvas, the same size as the desi
 ## Known gaps
 
 - Only tested in a browser so far. The Android TV, Android and iOS builds haven't run yet (their native projects generate cleanly). Expect a fix or two on the first Gradle build, then focus-order tuning on a real TV, and a check that AllAnime accepts requests from Android's HTTP client.
-- The UI is laid out for a 16:9 TV screen, so phones and tablets run it in landscape, scaled to fit. A touch-first phone layout is a separate piece of work.
+- Phones and tablets run in landscape only. The layout follows the screen's shape (from short 20:9 phones to 4:3 tablets and 4K TVs), scrolls and swipes with touch, and shows focus rings only for a remote or keyboard. Search uses the device keyboard everywhere except on a TV.
 - No Windows build yet. `scripts/build.mjs` has a `windows` placeholder, and `npm run build:windows` can be added once it's built.
 - Only the mp4upload source is extracted. Other AllAnime servers need their own extractors.
 - AniList sign-in and progress sync are checked against AniList's API (queries validate, a bad token is rejected), but haven't been run end to end with a real account yet.

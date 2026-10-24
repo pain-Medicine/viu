@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Platform, ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, type ScrollViewInstance, StyleSheet, TextInput, View } from 'react-native';
 
 import { listMedia, Media, trending } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
@@ -11,22 +11,26 @@ import { Empty } from '../ui/Empty';
 import { ErrorState } from '../ui/ErrorState';
 import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
 import { Panel } from '../ui/Panel';
-import { Text } from '../ui/Text';
+import { gridColumns, useCardSize, useStage } from '../ui/Stage';
+import { Text, textStyle } from '../ui/Text';
 import { formatLabel } from './format';
 
 const KEYS = 'abcdefghijklmnopqrstuvwxyz1234567890'.split('');
-const COLS = 5;
 const CARD_W = 218;
 const CARD_H = 310;
-const ROW_STEP = CARD_H + 120;
 
-// A remote has no keyboard, so search uses an on-screen key grid. The web
-// build also accepts typing on a real keyboard.
+// A remote has no keyboard, so on a TV search uses an on-screen key grid.
+// Phones, tablets and the web get a real text field and their own keyboard.
 export function SearchScreen() {
   const { theme } = useSettings();
   const c = theme.colors;
   const nav = useNav();
   const active = useScreenActive();
+  const stage = useStage();
+  const { cardW, cardH, rowStep } = useCardSize(CARD_W, CARD_H);
+  const keyGrid = Platform.isTV;
+  const gridLeft = keyGrid ? 634 : 66;
+  const cols = gridColumns(stage.width - gridLeft - 66, cardW);
 
   const [query, setQuery] = useState('');
   const queryRef = useRef(query);
@@ -38,7 +42,7 @@ export function SearchScreen() {
   }, [query]);
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || !active) return;
+    if (Platform.OS !== 'web' || !active || !keyGrid) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key.length === 1 && /[\w !'.:-]/.test(e.key)) {
@@ -56,7 +60,7 @@ export function SearchScreen() {
     };
     window.addEventListener('keydown', onKey, { capture: true });
     return () => window.removeEventListener('keydown', onKey, { capture: true });
-  }, [active]);
+  }, [active, keyGrid]);
 
   const results = useAsync(debounced ? `search:${debounced}` : 'trending', () =>
     debounced ? listMedia({ search: debounced, perPage: 25 }) : trending(),
@@ -112,37 +116,60 @@ export function SearchScreen() {
           paddingHorizontal: 32,
         }}
       >
-        <Text variant="query" color={query ? c.text : c.textMuted} style={{ flex: 1 }} numberOfLines={1}>
-          {query || 'Search anime'}
-          {query ? (
-            <Text variant="query" color={c.primary}>
-              |
-            </Text>
-          ) : null}
-        </Text>
+        {keyGrid ? (
+          <Text variant="query" color={query ? c.text : c.textMuted} style={{ flex: 1 }} numberOfLines={1}>
+            {query || 'Search anime'}
+            {query ? (
+              <Text variant="query" color={c.primary}>
+                |
+              </Text>
+            ) : null}
+          </Text>
+        ) : (
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search anime"
+            placeholderTextColor={c.textMuted}
+            selectionColor={c.primary}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            accessibilityLabel="Search anime"
+            autoFocus={Platform.OS === 'web'}
+            style={[
+              textStyle(theme, 'query'),
+              // Positioned, so the web build paints it above the panel's blur layer.
+              { flex: 1, color: c.text, padding: 0, position: 'relative' },
+              Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null,
+            ]}
+          />
+        )}
         <Text variant="label" color={c.textMuted}>
           {results.loading ? 'Searching…' : debounced ? `${items.length} results` : 'Trending now'}
         </Text>
       </Panel>
 
-      <Panel style={{ position: 'absolute', top: 192, left: 80, bottom: 56, width: 520, padding: 28, gap: 10 }}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {KEYS.map((k, i) => key(k, () => setQuery((q) => q + k), { autoFocus: i === 0 }))}
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          {key('Space', () => setQuery((q) => (q && !q.endsWith(' ') ? `${q} ` : q)), { wide: true })}
-          {key('Delete', () => setQuery((q) => q.slice(0, -1)), { wide: true })}
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>{key('Clear', () => setQuery(''), { wide: true })}</View>
-        <View style={{ flex: 1 }} />
-        <Text variant="meta" color={c.featureMuted}>
-          {Platform.OS === 'web' ? 'Type on your keyboard or use the keys above.' : 'Titles come from AniList.'}
-        </Text>
-      </Panel>
+      {keyGrid && (
+        <Panel style={{ position: 'absolute', top: 192, left: 80, bottom: 56, width: 520, padding: 28, gap: 10 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {KEYS.map((k, i) => key(k, () => setQuery((q) => q + k), { autoFocus: i === 0 }))}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {key('Space', () => setQuery((q) => (q && !q.endsWith(' ') ? `${q} ` : q)), { wide: true })}
+            {key('Delete', () => setQuery((q) => q.slice(0, -1)), { wide: true })}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>{key('Clear', () => setQuery(''), { wide: true })}</View>
+          <View style={{ flex: 1 }} />
+          <Text variant="meta" color={c.featureMuted}>
+            Titles come from AniList.
+          </Text>
+        </Panel>
+      )}
 
       <ScrollView
         ref={scroll}
-        style={{ position: 'absolute', top: 178, left: 634, right: 66, bottom: 0 }}
+        style={{ position: 'absolute', top: 178, left: gridLeft, right: 66, bottom: 0 }}
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 24, rowGap: 32, padding: 14, paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
       >
@@ -156,7 +183,7 @@ export function SearchScreen() {
             onRetry={results.retry}
           />
         )}
-        {results.loading && !items.length && <PosterSkeletons count={10} width={CARD_W} height={CARD_H} />}
+        {results.loading && !items.length && <PosterSkeletons count={10} width={cardW} height={cardH} />}
         {!results.loading && debounced && !items.length && !results.error && (
           <Empty
             title={`Nothing called “${debounced}”`}
@@ -168,10 +195,10 @@ export function SearchScreen() {
             key={m.id}
             media={m}
             shape="poster"
-            width={CARD_W}
-            height={CARD_H}
+            width={cardW}
+            height={cardH}
             meta={[m.seasonYear, formatLabel(m)].filter(Boolean).join(' · ')}
-            onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, Math.floor(i / COLS) * ROW_STEP - 0), animated: true })}
+            onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, Math.floor(i / cols) * rowStep), animated: true })}
             onPress={() => nav.push({ name: 'details', mediaId: m.id })}
           />
         ))}

@@ -11,15 +11,14 @@ import { Empty } from '../ui/Empty';
 import { ErrorState } from '../ui/ErrorState';
 import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
 import { Panel } from '../ui/Panel';
+import { gridColumns, useCardSize, useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 import { formatLabel } from './format';
 
 const PER_PAGE = 24;
-const COLS = 4;
 const CARD_W = 236;
 const CARD_H = 336;
-const ROW_STEP = CARD_H + 120;
 
 type Season = NonNullable<MediaFilter['season']>;
 
@@ -55,6 +54,12 @@ export function BrowseScreen() {
   const { theme } = useSettings();
   const c = theme.colors;
   const nav = useNav();
+  const stage = useStage();
+  const { cardW, cardH, rowStep } = useCardSize(CARD_W, CARD_H);
+  const panelW = stage.narrow ? 360 : 600;
+  const gridLeft = 80 + panelW + 20;
+  // As many poster columns as the screen has room for.
+  const cols = gridColumns(stage.width - gridLeft - 66, cardW);
 
   const thisYear = currentSeason().year;
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i);
@@ -94,8 +99,8 @@ export function BrowseScreen() {
       <FrameMarks crumb="VIU.TV / BROWSE" />
       <TopNav active="browse" />
 
-      <Panel style={{ position: 'absolute', top: theme.layout.contentTop, left: 80, bottom: 56, width: 600 }}>
-        <ScrollView contentContainerStyle={{ padding: 28, gap: 26 }} showsVerticalScrollIndicator={false}>
+      <Panel style={{ position: 'absolute', top: theme.layout.contentTop, left: 80, bottom: 56, width: panelW }}>
+        <ScrollView contentContainerStyle={{ padding: stage.narrow ? 22 : 28, gap: 26 }} showsVerticalScrollIndicator={false}>
           {group(
             'Sort',
             SORTS.map((s, i) => (
@@ -127,7 +132,7 @@ export function BrowseScreen() {
 
       <ScrollView
         ref={grid}
-        style={{ position: 'absolute', top: theme.layout.contentTop - 14, left: 700, right: 66, bottom: 0 }}
+        style={{ position: 'absolute', top: theme.layout.contentTop - 14, left: gridLeft, right: 66, bottom: 0 }}
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 24, rowGap: 32, padding: 14, paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
       >
@@ -138,11 +143,12 @@ export function BrowseScreen() {
             page={i + 1}
             onLoaded={(count) => setLastPage({ key, page: i + 1, count })}
             onFocusIndex={(n) => {
-              grid.current?.scrollTo({ y: Math.max(0, Math.floor((i * PER_PAGE + n) / COLS) * ROW_STEP), animated: true });
+              grid.current?.scrollTo({ y: Math.max(0, Math.floor((i * PER_PAGE + n) / cols) * rowStep), animated: true });
               // Reaching the last row of what's loaded fetches the next page,
               // so a remote never has to find a "more" button.
-              if (more && i + 1 === pages && n >= PER_PAGE - COLS) setPages((p) => p + 1);
+              if (more && i + 1 === pages && n >= PER_PAGE - cols) setPages((p) => p + 1);
             }}
+            cols={cols}
             onOpen={(id) => nav.push({ name: 'details', mediaId: id })}
           />
         ))}
@@ -158,14 +164,17 @@ function ResultsPage({
   page,
   onLoaded,
   onFocusIndex,
+  cols,
   onOpen,
 }: {
+  cols: number;
   filter: MediaFilter;
   page: number;
   onLoaded: (count: number) => void;
   onFocusIndex: (index: number) => void;
   onOpen: (mediaId: number) => void;
 }) {
+  const { cardW, cardH } = useCardSize(CARD_W, CARD_H);
   const result = useAsync(`browse:${JSON.stringify(filter)}:${page}`, () => listMedia({ ...filter, page }));
   const count = result.data?.length;
   useEffect(() => {
@@ -187,7 +196,7 @@ function ResultsPage({
       />
     );
   }
-  if (result.loading) return <PosterSkeletons count={page === 1 ? PER_PAGE : COLS} width={CARD_W} height={CARD_H} />;
+  if (result.loading) return <PosterSkeletons count={page === 1 ? PER_PAGE : cols} width={cardW} height={cardH} />;
   if (count === 0 && page === 1) {
     return <Empty title="Nothing matches" body="No titles on AniList fit all of these filters. Try setting one back to Any." />;
   }
@@ -198,8 +207,8 @@ function ResultsPage({
           key={m.id}
           media={m}
           shape="poster"
-          width={CARD_W}
-          height={CARD_H}
+          width={cardW}
+          height={cardH}
           meta={[m.seasonYear, formatLabel(m)].filter(Boolean).join(' · ')}
           tag={m.averageScore ? `${m.averageScore}%` : undefined}
           onFocus={() => onFocusIndex(n)}

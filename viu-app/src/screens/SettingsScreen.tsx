@@ -14,6 +14,7 @@ import { FrameMarks, Hazard } from '../ui/Decor';
 import { Focusable } from '../ui/Focusable';
 import { Icon } from '../ui/Icon';
 import { ChamferBox } from '../ui/Shapes';
+import { useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 
@@ -42,7 +43,7 @@ export function SettingsScreen() {
         <Text variant="page">Settings</Text>
 
         <Section label="Theme" index="01">
-          <View style={{ flexDirection: 'row', gap: 32 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 32 }}>
             {Object.values(themes).map((t, i) => (
               <ThemeCard
                 key={t.id}
@@ -204,9 +205,11 @@ function NetworkSection() {
 function Section({ label, index, children }: { label: string; index: string; children: React.ReactNode }) {
   const { theme } = useSettings();
   const c = theme.colors;
+  // Narrow screens put the label above its section instead of beside it.
+  const { narrow } = useStage();
   return (
-    <View style={{ flexDirection: 'row', gap: 40 }}>
-      <View style={{ width: 260, gap: 10, paddingTop: 8 }}>
+    <View style={{ flexDirection: narrow ? 'column' : 'row', gap: narrow ? 20 : 40 }}>
+      <View style={{ width: narrow ? undefined : 260, gap: 10, paddingTop: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           {theme.decor.indexLabels && (
             <Text variant="metaBold" color={c.primary}>
@@ -238,6 +241,9 @@ function ThemeCard({
   const { theme } = useSettings();
   const o = option.colors;
   const button = { minHeight: 52, paddingHorizontal: 26, justifyContent: 'center' as const };
+  // Two cards side by side on any screen wide enough, else one under the other.
+  const stage = useStage();
+  const width = Math.min(560, Math.max(440, Math.floor((stage.width - 160 - 32) / 2)));
   return (
     <Focusable
       onPress={onPress}
@@ -248,7 +254,7 @@ function ThemeCard({
     >
       <View
         style={{
-          width: 560,
+          width,
           height: 300,
           borderRadius: theme.shape.radiusLg,
           backgroundColor: o.ground,

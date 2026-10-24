@@ -13,14 +13,13 @@ import { FrameMarks } from '../ui/Decor';
 import { Empty } from '../ui/Empty';
 import { ErrorState } from '../ui/ErrorState';
 import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
+import { gridColumns, useCardSize, useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 import { formatLabel } from './format';
 
-const COLS = 6;
 const CARD_W = 262;
 const CARD_H = 374;
-const ROW_STEP = CARD_H + 120;
 
 const STATUSES: { status: ListStatus; label: string }[] = [
   { status: 'CURRENT', label: 'Watching' },
@@ -129,6 +128,9 @@ function ListLayout({
   const c = theme.colors;
   const nav = useNav();
   const scroll = useRef<ScrollViewInstance>(null);
+  const stage = useStage();
+  const { cardW, cardH, rowStep } = useCardSize(CARD_W, CARD_H);
+  const cols = gridColumns(stage.width - 132, cardW, 32);
 
   return (
     <View style={StyleSheet.absoluteFill}>
@@ -148,7 +150,7 @@ function ListLayout({
         {header}
         <View style={{ flex: 1 }} />
         <Text variant="label" color={c.textMuted}>
-          {loading ? 'Loading…' : `${note}  ·  ${items.length} titles`}
+          {loading ? 'Loading…' : stage.narrow ? `${items.length} titles` : `${note}  ·  ${items.length} titles`}
         </Text>
       </View>
       <ScrollView
@@ -158,18 +160,18 @@ function ListLayout({
         showsVerticalScrollIndicator={false}
       >
         {error && <ErrorState compact error={error} service="AniList" title="Couldn't load My List" onRetry={onRetry} />}
-        {loading && <PosterSkeletons count={COLS} width={CARD_W} height={CARD_H} />}
+        {loading && <PosterSkeletons count={cols} width={cardW} height={cardH} />}
         {!loading && !error && !items.length && <Empty title={empty.title} body={empty.body} />}
         {items.map(({ media, tag }, i) => (
           <MediaCard
             key={media.id}
             media={media}
             shape="poster"
-            width={CARD_W}
-            height={CARD_H}
+            width={cardW}
+            height={cardH}
             tag={tag}
             meta={[media.seasonYear, formatLabel(media)].filter(Boolean).join(' · ')}
-            onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, Math.floor(i / COLS) * ROW_STEP), animated: true })}
+            onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, Math.floor(i / cols) * rowStep), animated: true })}
             onPress={() => nav.push({ name: 'details', mediaId: media.id })}
           />
         ))}

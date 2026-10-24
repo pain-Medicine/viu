@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-native';
+import { ScrollView, type ScrollViewInstance, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Text as SvgText } from 'react-native-svg';
 
 import { allTimePopular, displayTitle, getMany, Media, plainDescription, popularThisSeason, trending } from '../api/anilist';
@@ -16,6 +16,7 @@ import { MediaCard } from '../ui/MediaCard';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 import { Rail } from '../ui/Rail';
+import { useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 import { formatLabel, metaLine, minutesLeft } from './format';
@@ -43,6 +44,11 @@ export function HomeScreen() {
   const c = theme.colors;
   const nav = useNav();
   const history = useHistory();
+  const stage = useStage();
+  // TV: a fixed hero over a panel of rows that pages with the D-pad. Elsewhere
+  // the page scrolls, hero first and then every row, like a phone app.
+  const flow = stage.mode === 'flow';
+  const compact = stage.short;
 
   const historyIds = history.entries.slice(0, 20).map((e) => e.mediaId);
   const watching = useAsync(historyIds.length ? `many:${historyIds.join(',')}` : null, () => getMany(historyIds));
@@ -72,15 +78,18 @@ export function HomeScreen() {
   useEffect(() => () => clearTimeout(heroTimer.current), []);
 
   // Stable, so focusing a card re-renders the hero but not every row.
-  const onCardFocus = useCallback((m: Media, r: number) => {
-    clearTimeout(heroTimer.current);
-    heroTimer.current = setTimeout(() => setHeroId(m.id), HERO_DELAY_MS);
-    if (r !== activeRowRef.current) {
-      activeRowRef.current = r;
-      setActiveRow(r);
-      vertical.current?.scrollTo({ y: r * ROW_H, animated: true });
-    }
-  }, []);
+  const onCardFocus = useCallback(
+    (m: Media, r: number) => {
+      clearTimeout(heroTimer.current);
+      heroTimer.current = setTimeout(() => setHeroId(m.id), HERO_DELAY_MS);
+      if (r !== activeRowRef.current) {
+        activeRowRef.current = r;
+        setActiveRow(r);
+        if (!flow) vertical.current?.scrollTo({ y: r * ROW_H, animated: true });
+      }
+    },
+    [flow],
+  );
 
   const translation = settings.translation;
   const play = useCallback(
@@ -102,105 +111,131 @@ export function HomeScreen() {
     popular.retry();
   };
 
-  return (
-    <View style={StyleSheet.absoluteFill}>
-      {hero && <Backdrop media={hero} posterRight={theme.decor.indexLabels ? 456 : 120} />}
-      <DotMatrix />
-      <HeroScrim />
-      <FrameMarks crumb={`VIU.TV / HOME / ROW ${String(activeRow + 1).padStart(2, '0')}`} />
-      <TopNav active="home" />
-
-      {failure && (
-        <ErrorState
-          error={failure}
-          service="AniList"
-          title="Couldn't load Home"
-          onRetry={retryAll}
-          style={{ position: 'absolute', top: 260, left: 80 }}
-        />
-      )}
-
-      {loading && <HomeSkeleton />}
-
-      {hero && (
-        <View style={{ position: 'absolute', top: theme.layout.contentTop - 6, left: 80, width: theme.layout.heroWidth, gap: 18 }}>
-          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-            {entry ? (
-              <>
-                <Chip badge check label="Watching" />
-                <Chip label={`Episode ${entry.episode}${hero.episodes ? ` of ${hero.episodes}` : ''}`} />
-              </>
-            ) : (
-              <>
-                {hero.status === 'RELEASING' && <Chip badge label="Airing" />}
-                {!theme.decor.indexLabels && <Chip label={formatLabel(hero)} />}
-              </>
-            )}
-            {theme.decor.indexLabels && (
-              <Text variant="label" color={c.textOnArt} style={{ marginLeft: 4 }}>
-                {metaLine(hero, { genres: false }).replace(/ {2}· {2}/g, ' — ')}
-              </Text>
-            )}
-          </View>
-          <Text variant="hero" size={sizeFor(displayTitle(hero), theme.text.hero.size)} numberOfLines={2}>
-            {displayTitle(hero)}
-          </Text>
-          {theme.decor.indexLabels ? (
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {hero.genres.slice(0, 3).map((g) => (
-                <Chip key={g} size="sm" label={g} />
-              ))}
-            </View>
+  const rowList = rows.map((row, r) => (
+    <HomeRow
+      key={row.key}
+      row={row}
+      index={r}
+      history={row.key === 'continue' ? history.get : undefined}
+      onCardFocus={onCardFocus}
+      onCardPress={onCardPress}
+    />
+  ));
+  const wide = !stage.narrow;
+  const heroContent = (heroPlace: StyleProp<ViewStyle>) =>
+    hero && (
+      <View style={[{ width: Math.min(theme.layout.heroWidth, stage.width - 160), gap: compact ? 14 : 18 }, heroPlace]}>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          {entry ? (
+            <>
+              <Chip badge check label="Watching" />
+              <Chip label={`Episode ${entry.episode}${hero.episodes ? ` of ${hero.episodes}` : ''}`} />
+            </>
           ) : (
-            <Text variant="label" color={c.textMuted}>
-              {metaLine(hero)}
+            <>
+              {hero.status === 'RELEASING' && <Chip badge label="Airing" />}
+              {!theme.decor.indexLabels && <Chip label={formatLabel(hero)} />}
+            </>
+          )}
+          {theme.decor.indexLabels && (
+            <Text variant="label" color={c.textOnArt} style={{ marginLeft: 4 }}>
+              {metaLine(hero, { genres: false }).replace(/ {2}· {2}/g, ' — ')}
             </Text>
           )}
+        </View>
+        <Text variant="hero" size={sizeFor(displayTitle(hero), theme.text.hero.size * (compact ? 0.62 : 1))} numberOfLines={2}>
+          {displayTitle(hero)}
+        </Text>
+        {theme.decor.indexLabels ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {hero.genres.slice(0, 3).map((g) => (
+              <Chip key={g} size="sm" label={g} />
+            ))}
+          </View>
+        ) : (
+          <Text variant="label" color={c.textMuted}>
+            {metaLine(hero)}
+          </Text>
+        )}
+        {!compact && (
           <Text color={c.textOnArt} numberOfLines={2} style={{ maxWidth: 760 }}>
             {plainDescription(hero)}
           </Text>
-          <View style={{ flexDirection: 'row', gap: 22, marginTop: 8, alignItems: 'center' }}>
-            <Button
-              autoFocus
-              variant="primary"
-              size="lg"
-              icon="play"
-              optionalIcon
-              label={heroNext ? `${heroNext.resume ? 'Resume' : 'Play'} E${heroNext.episode}` : 'Play E1'}
-              onPress={() => play(hero, entry)}
-            />
-            <Button size="lg" label="Details" onPress={() => nav.push({ name: 'details', mediaId: hero.id })} />
-            {theme.decor.indexLabels && entry && (
-              <View style={{ marginLeft: 18, width: 240, gap: 6 }}>
-                <ProgressBar value={progressOf(entry)} color={c.accent} track={c.outline} />
-                <Text variant="meta" color={c.textMuted}>
-                  {`${Math.round(progressOf(entry) * 100)}% — ${minutesLeft(entry)}`}
-                </Text>
-              </View>
-            )}
-          </View>
+        )}
+        <View style={{ flexDirection: 'row', gap: compact ? 16 : 22, marginTop: compact ? 4 : 8, alignItems: 'center' }}>
+          <Button
+            autoFocus
+            variant="primary"
+            size={compact ? 'md' : 'lg'}
+            icon="play"
+            optionalIcon
+            label={heroNext ? `${heroNext.resume ? 'Resume' : 'Play'} E${heroNext.episode}` : 'Play E1'}
+            onPress={() => play(hero, entry)}
+          />
+          <Button size={compact ? 'md' : 'lg'} label="Details" onPress={() => nav.push({ name: 'details', mediaId: hero.id })} />
+          {theme.decor.indexLabels && entry && (
+            <View style={{ marginLeft: 18, width: 240, gap: 6 }}>
+              <ProgressBar value={progressOf(entry)} color={c.accent} track={c.outline} />
+              <Text variant="meta" color={c.textMuted}>
+                {`${Math.round(progressOf(entry) * 100)}% — ${minutesLeft(entry)}`}
+              </Text>
+            </View>
+          )}
         </View>
-      )}
+      </View>
+    );
 
-      {hero && theme.decor.indexLabels && <Readout media={hero} entry={entry} rank={all.indexOf(hero) + 1} />}
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      {hero && <Backdrop media={hero} poster={wide} posterRight={theme.decor.indexLabels ? 456 : 120} />}
+      <DotMatrix />
+      <HeroScrim />
+      <FrameMarks crumb={`VIU.TV / HOME / ROW ${String(activeRow + 1).padStart(2, '0')}`} />
 
-      {rows.length > 0 && (
-        <Panel style={{ position: 'absolute', left: 56, right: 56, bottom: 22, height: ROW_H + PEEK }}>
-          <ScrollView ref={vertical} scrollEnabled={false} showsVerticalScrollIndicator={false}>
-            {rows.map((row, r) => (
-              <HomeRow
-                key={row.key}
-                row={row}
-                index={r}
-                history={row.key === 'continue' ? history.get : undefined}
-                onCardFocus={onCardFocus}
-                onCardPress={onCardPress}
+      {flow ? (
+        <ScrollView style={StyleSheet.absoluteFill} showsVerticalScrollIndicator={false}>
+          <View style={{ minHeight: stage.height - ROW_H - PEEK - 22, paddingTop: theme.layout.contentTop - 6, paddingBottom: 40 }}>
+            <TopNav active="home" />
+            {loading && <HomeSkeleton />}
+            {failure && (
+              <ErrorState
+                error={failure}
+                service="AniList"
+                title="Couldn't load Home"
+                onRetry={retryAll}
+                style={{ marginLeft: 80, marginTop: 110 }}
               />
-            ))}
-            {/* Room for the last row to scroll fully into place. */}
-            <View style={{ height: PEEK }} />
-          </ScrollView>
-        </Panel>
+            )}
+            {heroContent({ marginLeft: 80 })}
+            {hero && wide && theme.decor.indexLabels && <Readout media={hero} entry={entry} rank={all.indexOf(hero) + 1} />}
+          </View>
+          {rows.length > 0 && <Panel style={{ marginHorizontal: 56, marginBottom: 22, paddingBottom: 22 }}>{rowList}</Panel>}
+        </ScrollView>
+      ) : (
+        <>
+          <TopNav active="home" />
+          {failure && (
+            <ErrorState
+              error={failure}
+              service="AniList"
+              title="Couldn't load Home"
+              onRetry={retryAll}
+              style={{ position: 'absolute', top: 260, left: 80 }}
+            />
+          )}
+          {loading && <HomeSkeleton />}
+          {heroContent({ position: 'absolute', top: theme.layout.contentTop - 6, left: 80 })}
+          {hero && wide && theme.decor.indexLabels && <Readout media={hero} entry={entry} rank={all.indexOf(hero) + 1} />}
+          {rows.length > 0 && (
+            <Panel style={{ position: 'absolute', left: 56, right: 56, bottom: 22, height: ROW_H + PEEK }}>
+              <ScrollView ref={vertical} scrollEnabled={false} showsVerticalScrollIndicator={false}>
+                {rowList}
+                {/* Room for the last row to scroll fully into place. */}
+                <View style={{ height: PEEK }} />
+              </ScrollView>
+            </Panel>
+          )}
+        </>
       )}
     </View>
   );
