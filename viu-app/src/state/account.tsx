@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { viewer, Viewer } from '../api/anilist';
+import { tokenFrom, viewer, Viewer } from '../api/anilist';
 
 const STORAGE_KEY = 'viu.account.v1';
 
@@ -21,14 +21,6 @@ interface AccountContextValue {
 }
 
 const AccountContext = createContext<AccountContextValue | null>(null);
-
-// AniList redirects to a URL with the token in its fragment, and people
-// often copy the whole address bar, so accept either form.
-export function tokenFrom(pasted: string): string {
-  const text = pasted.trim();
-  const match = /access_token=([^&\s]+)/.exec(text);
-  return match ? decodeURIComponent(match[1]) : text;
-}
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<Account | null>(null);

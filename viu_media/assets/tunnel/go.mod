@@ -3,13 +3,13 @@ module github.com/viu-media/viu/tunnel
 go 1.26.0
 
 require (
+	github.com/go-ini/ini v1.67.0
 	github.com/windtf/wireproxy v1.1.3
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867
 )
 
 require (
 	github.com/MakeNowJust/heredoc/v2 v2.0.1 // indirect
-	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/things-go/go-socks5 v0.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect

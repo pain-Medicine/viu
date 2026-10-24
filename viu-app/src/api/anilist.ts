@@ -128,6 +128,11 @@ export async function getMany(ids: number[]): Promise<Media[]> {
   return ids.map((id) => byId.get(id)).filter((m): m is Media => !!m);
 }
 
+// Episodes out so far: the total once known, otherwise the ones aired.
+export function airedEpisodes(media: Media): number {
+  return media.episodes ?? (media.nextAiringEpisode ? media.nextAiringEpisode.episode - 1 : 0);
+}
+
 export function displayTitle(media: Media): string {
   return media.title.english || media.title.userPreferred || media.title.romaji || 'Untitled';
 }
@@ -182,6 +187,14 @@ export async function airingBetween(from: number, to: number): Promise<Airing[]>
 
 export const ANILIST_CLIENT_ID = 20148;
 export const ANILIST_AUTH_URL = `https://anilist.co/api/v2/oauth/authorize?client_id=${ANILIST_CLIENT_ID}&response_type=token`;
+
+// AniList redirects to a URL with the token in its fragment, and people
+// often copy the whole address bar, so accept either form.
+export function tokenFrom(pasted: string): string {
+  const text = pasted.trim();
+  const match = /access_token=([^&\s]+)/.exec(text);
+  return match ? decodeURIComponent(match[1]) : text;
+}
 
 export interface Viewer {
   id: number;

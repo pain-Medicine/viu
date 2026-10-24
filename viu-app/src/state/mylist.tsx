@@ -92,7 +92,9 @@ export function useProgressSync() {
       const current = await listEntry(account.token, media.id);
       if (current && current.progress >= n && current.status !== 'PLANNING') return;
       const done = !!media.episodes && n >= media.episodes;
-      await saveListEntry(account.token, { mediaId: media.id, progress: n, status: done ? 'COMPLETED' : 'CURRENT' });
+      // A rewatch stays a rewatch until it's done.
+      const status = done ? 'COMPLETED' : current?.status === 'REPEATING' ? 'REPEATING' : 'CURRENT';
+      await saveListEntry(account.token, { mediaId: media.id, progress: n, status });
       changed();
     },
     [account, changed],

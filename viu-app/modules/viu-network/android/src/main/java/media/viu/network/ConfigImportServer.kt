@@ -7,16 +7,19 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.security.SecureRandom
 import kotlin.concurrent.thread
 
 /**
  * A tiny one-page web server on the home network, so a WireGuard config can
  * come from a phone instead of being typed with a TV remote. It only accepts a
  * GET for the form and a POST with the config, and stops when the import
- * screen closes.
+ * screen closes. The address carries a random secret (shown only in the QR
+ * code), so others on the same network can't send a config of their own.
  */
 class ConfigImportServer(private val port: Int, private val onConfig: (String) -> Unit) {
   @Volatile private var socket: ServerSocket? = null
+  private val secret = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
 
   /** Starts listening and returns the URL to open on the phone. */
   fun start(): String {
@@ -25,10 +28,17 @@ class ConfigImportServer(private val port: Int, private val onConfig: (String) -
     thread(name = "viu-config-import", isDaemon = true) {
       while (!server.isClosed) {
         val client = try { server.accept() } catch (e: Exception) { break }
-        thread(isDaemon = true) { client.use { handle(it) } }
+        // An uncaught exception here would kill the app, and idle or dropped
+        // phone connections throw (read timeout, broken pipe).
+        thread(isDaemon = true) {
+          try {
+            client.use { handle(it) }
+          } catch (e: Exception) {
+          }
+        }
       }
     }
-    return "http://${lanAddress()}:${server.localPort}"
+    return "http://${lanAddress()}:${server.localPort}/$secret"
   }
 
   fun stop() {
@@ -49,6 +59,11 @@ class ConfigImportServer(private val port: Int, private val onConfig: (String) -
       }
     }
     val out = client.getOutputStream()
+    val path = requestLine.split(' ').getOrNull(1)?.substringBefore('?')
+    if (path != "/$secret") {
+      respond(out, 404, page("Scan the code on the TV to open this page."))
+      return
+    }
     if (!requestLine.startsWith("POST ")) {
       respond(out, 200, FORM_PAGE)
       return
@@ -91,7 +106,7 @@ class ConfigImportServer(private val port: Int, private val onConfig: (String) -
 
   private fun respond(out: java.io.OutputStream, status: Int, html: String) {
     val bytes = html.toByteArray(Charsets.UTF_8)
-    val reason = mapOf(200 to "OK", 400 to "Bad Request", 413 to "Payload Too Large")[status] ?: "OK"
+    val reason = mapOf(200 to "OK", 400 to "Bad Request", 404 to "Not Found", 413 to "Payload Too Large")[status] ?: "OK"
     out.write(
       "HTTP/1.1 $status $reason\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
         .toByteArray(Charsets.US_ASCII),

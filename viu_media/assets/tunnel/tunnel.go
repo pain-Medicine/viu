@@ -13,11 +13,11 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/go-ini/ini"
 	"github.com/windtf/wireproxy"
 )
 
@@ -72,20 +72,27 @@ func stopLocked() {
 }
 
 func startWireGuard(wgConfig string) (*wireproxy.VirtualTun, error) {
-	// wireproxy parses configs from files only
-	f, err := os.CreateTemp("", "viu-wg-*.conf")
+	// Parsed from memory the way wireproxy.ParseConfig reads a file, so the
+	// private key never touches disk (and Android, whose default temp folder
+	// apps can't write to, needs no temp file).
+	cfg, err := ini.LoadSources(ini.LoadOptions{
+		Insensitive:            true,
+		AllowShadows:           true,
+		AllowNonUniqueSections: true,
+	}, []byte(wgConfig))
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(f.Name())
-	_, err = f.WriteString(wgConfig)
-	f.Close()
-	if err != nil {
+	device := &wireproxy.DeviceConfig{MTU: 1420}
+	if err := wireproxy.ParseInterface(cfg, device); err != nil {
 		return nil, err
 	}
-	conf, err := wireproxy.ParseConfig(f.Name())
-	if err != nil {
+	if err := wireproxy.ParsePeers(cfg, &device.Peers); err != nil {
 		return nil, err
+	}
+	conf := &wireproxy.Configuration{
+		Device:  device,
+		Resolve: &wireproxy.ResolveConfig{ResolveStrategy: "auto"},
 	}
 	return wireproxy.StartWireguard(conf, 0)
 }

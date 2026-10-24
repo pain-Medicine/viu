@@ -8,7 +8,7 @@ import { displayTitle, getMedia } from '../api/anilist';
 import { SkipInterval, skipTimes } from '../api/aniskip';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
-import { matchProviderShow, provider, TranslationType } from '../providers';
+import { findShow, playableUrl, provider, showKey, TranslationType } from '../providers';
 import { isWatched, useHistory } from '../state/history';
 import { useProgressSync } from '../state/mylist';
 import { useSettings } from '../state/settings';
@@ -42,18 +42,16 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   const syncProgress = useProgressSync();
 
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
-  const streams = useAsync(media.data ? `streams:${mediaId}:${episode}:${translation}` : null, async () => {
-    const match = await matchProviderShow(media.data!, translation);
-    if (!match) throw new Error(`AllAnime doesn't list this title (${translation}).`);
-    const [show, servers] = await Promise.all([
-      provider.get(match.id),
-      provider.episodeStreams(match.id, episode, translation),
-    ]);
+  // Usually already cached by the details page.
+  const show = useAsync(media.data ? showKey(mediaId, translation) : null, () => findShow(media.data!, translation));
+  const showId = show.data?.id;
+  const streams = useAsync(showId ? `streams:${showId}:${episode}:${translation}` : null, async () => {
+    const servers = await provider.episodeStreams(showId!, episode, translation);
     const options: Option[] = servers.flatMap((s) =>
-      s.links.map((l) => ({ label: `${l.quality} · ${s.name}`, source: { uri: l.url, headers: s.headers } })),
+      s.links.map((l) => ({ label: `${l.quality} · ${s.name}`, source: { uri: playableUrl(l.url, s.headers), headers: s.headers } })),
     );
     if (!options.length) throw new Error('No playable stream for this episode yet.');
-    return { episodes: show?.episodes[translation] ?? [], options };
+    return { options };
   });
 
   const [optionIndex, setOptionIndex] = useState(0);
@@ -123,7 +121,7 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   useTVEventHandler(poke);
   const shown = visible || !isPlaying;
 
-  const episodes = streams.data?.episodes ?? [];
+  const episodes = show.data?.episodes[translation] ?? [];
   const next = useMemo(() => {
     const i = episodes.indexOf(episode);
     return i >= 0 && i < episodes.length - 1 ? episodes[i + 1] : null;
@@ -153,7 +151,8 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   };
 
   const m = media.data;
-  const error = media.error ?? streams.error;
+  const notListed = show.data === null ? new Error(`AllAnime doesn't list this title (${translation}).`) : undefined;
+  const error = media.error ?? show.error ?? notListed ?? streams.error;
   const remaining = Math.max(0, duration - time.currentTime);
 
   return (

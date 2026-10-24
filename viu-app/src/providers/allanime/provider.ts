@@ -15,6 +15,7 @@ import {
   API_GRAPHQL_ENDPOINT,
   API_GRAPHQL_HEADERS,
   CLIENT_BUILD_ID,
+  CLIENT_EPOCH_MS,
   CLIENT_KEY_LANE,
   EPISODE_GQL_HASH,
   MP4_SERVER_JUICY_STREAM_REGEX,
@@ -47,10 +48,18 @@ function oneDigitSymmetricXor(password: number, hex: string): string {
 export class AllAnimeProvider implements AnimeProvider {
   name = 'AllAnime';
   private keys: Promise<AllAnimeKeys> | null = null;
+  // The api hands out new keys every week, so they're fetched again once the
+  // week changes (an app left open on a TV would otherwise keep stale ones).
+  private keysWeek = -1;
 
   constructor(private fetchFn: typeof fetch = (...args) => fetch(...args)) {}
 
   private getKeys(): Promise<AllAnimeKeys> {
+    const week = Math.floor(Date.now() / CLIENT_EPOCH_MS);
+    if (week !== this.keysWeek) {
+      this.keys = null;
+      this.keysWeek = week;
+    }
     if (!this.keys) {
       this.keys = AllAnimeKeys.fetch(this.fetchFn).catch((err) => {
         this.keys = null;

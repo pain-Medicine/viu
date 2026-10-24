@@ -40,8 +40,8 @@ const NetworkContext = createContext<NetworkContextValue | null>(null);
 async function apply(settings: NetworkSettings): Promise<NetworkStatus> {
   const native = ViuNetwork;
   if (!native) return { state: 'direct' };
-  native.stopTunnel();
   try {
+    native.stopTunnel();
     if (settings.mode === 'proxy' && settings.proxy) {
       native.setProxy(settings.proxy);
       return { state: 'proxy', proxy: settings.proxy };
@@ -63,6 +63,9 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<NetworkStatus>({ state: 'direct' });
   const [ready, setReady] = useState(false);
   const current = useRef(settings);
+  // Changes apply one after another, so a slow VPN start can't finish after
+  // a later change and undo it.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
 
   // The app waits for this before its first request, so nothing goes out
   // before the proxy or tunnel is in place.
@@ -83,7 +86,9 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     current.current = next;
     setSettings(next);
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {});
-    setStatus(await apply(next));
+    const applied = queue.current.then(() => apply(next));
+    queue.current = applied;
+    setStatus(await applied);
   }, []);
 
   const value = useMemo(

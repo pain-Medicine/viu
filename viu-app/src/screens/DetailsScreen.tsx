@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-native';
 
-import { displayTitle, getMedia, Media, plainDescription } from '../api/anilist';
+import { airedEpisodes, displayTitle, getMedia, Media, plainDescription } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
-import { matchProviderShow, provider, ProviderUnavailableError, TranslationType } from '../providers';
+import { findShow, ProviderUnavailableError, showKey, TranslationType } from '../providers';
 import { episodeProgress, HistoryEntry, isWatched, progressOf, upNext, useHistory } from '../state/history';
 import { useListMembership } from '../state/mylist';
 import { useSettings } from '../state/settings';
@@ -32,17 +32,13 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
   const membership = useListMembership(mediaId);
   const [translation, setTranslation] = useState<TranslationType>(settings.translation);
-  const show = useAsync(media.data ? `show:${mediaId}:${translation}` : null, async () => {
-    const match = await matchProviderShow(media.data!, translation);
-    return match ? provider.get(match.id) : null;
-  });
+  const show = useAsync(media.data ? showKey(mediaId, translation) : null, () => findShow(media.data!, translation));
 
   // Episode names from the provider, or a count from AniList when the
   // provider can't be reached (the web build without a proxy).
   const episodes = useMemo(() => {
     if (show.data) return show.data.episodes[translation];
-    const m = media.data;
-    const n = m?.episodes ?? (m?.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0);
+    const n = media.data ? airedEpisodes(media.data) : 0;
     return Array.from({ length: n }, (_, i) => String(i + 1));
   }, [show.data, media.data, translation]);
 

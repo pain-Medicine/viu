@@ -30,6 +30,7 @@
   "devDependencies": {
     "@react-native-tvos/config-tv": "^0.1.7",
     "@types/react": "~19.3.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -42,7 +43,8 @@
     "build:android": "node scripts/build.mjs android",
     "build:android:aab": "node scripts/build.mjs android --aab",
     "build:ios": "node scripts/build.mjs ios",
-    "build:all": "node scripts/build.mjs all"
+    "build:all": "node scripts/build.mjs all",
+    "test": "tsx --test tests/logic.test.ts"
   },
   "private": true,
   "expo": {

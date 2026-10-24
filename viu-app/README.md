@@ -117,7 +117,7 @@ Browsers block the cross-site requests and the `Referer` header that the provide
 EXPO_PUBLIC_PROVIDER_PROXY=https://your-proxy.example/fetch npm run web
 ```
 
-The proxy receives the target in a `url` query parameter and the headers to send as `x-forward-<name>` headers. It should return the upstream response with CORS headers added. The Android TV app doesn't need a proxy.
+The proxy receives the target in a `url` query parameter and the headers to send as `x-forward-<name>` headers. It should return the upstream response with CORS headers added. Video requests come from the browser's video player, which can't set headers, so they carry the `Referer` to send in a `referer` query parameter instead; for those the proxy should also pass the browser's `Range` header through and return the upstream status (206 for a range), so seeking works. The Android TV app doesn't need a proxy.
 
 ## Layout
 

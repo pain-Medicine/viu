@@ -1,8 +1,8 @@
 import { Platform } from 'react-native';
 
-import type { Media } from '../api/anilist';
+import { airedEpisodes, type Media } from '../api/anilist';
 import { AllAnimeProvider } from './allanime/provider';
-import { AnimeProvider, ProviderSearchResult, ProviderUnavailableError, TranslationType } from './types';
+import { AnimeProvider, ProviderAnime, ProviderSearchResult, ProviderUnavailableError, TranslationType } from './types';
 
 export * from './types';
 
@@ -26,6 +26,14 @@ function webProxyFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Re
   return fetch(`${PROXY}?url=${encodeURIComponent(target)}`, { ...init, headers });
 }
 
+// A browser's <video> can't send headers, so on web the video goes through the
+// proxy too, with the Referer it needs passed as a query parameter.
+export function playableUrl(url: string, headers: Record<string, string>): string {
+  if (Platform.OS !== 'web' || !PROXY) return url;
+  const referer = headers.Referer ?? headers.referer;
+  return `${PROXY}?url=${encodeURIComponent(url)}${referer ? `&referer=${encodeURIComponent(referer)}` : ''}`;
+}
+
 export const provider: AnimeProvider = new AllAnimeProvider(
   Platform.OS === 'web' ? webProxyFetch : (...args) => fetch(...args),
 );
@@ -45,6 +53,8 @@ export async function matchProviderShow(
 ): Promise<ProviderSearchResult | null> {
   const titles = [media.title.romaji, media.title.english, ...media.synonyms].filter((t): t is string => !!t);
   const wanted = new Set(titles.map(normalize));
+  // Airing shows have no total yet, so compare with what has aired.
+  const target = airedEpisodes(media);
   for (const q of [media.title.romaji, media.title.english].filter((t): t is string => !!t)) {
     const results = await provider.search(q, translation);
     if (!results.length) continue;
@@ -55,10 +65,18 @@ export async function matchProviderShow(
       .filter((r) => normalize(r.title).includes(base))
       .sort(
         (a, b) =>
-          Math.abs((a.episodes[translation] || 0) - (media.episodes ?? 0)) -
-          Math.abs((b.episodes[translation] || 0) - (media.episodes ?? 0)),
+          Math.abs((a.episodes[translation] || 0) - target) - Math.abs((b.episodes[translation] || 0) - target),
       );
     if (close.length) return close[0];
   }
   return null;
+}
+
+// The provider's show for an AniList title, with its episode list. The
+// details page and the player share it through the same cache key.
+export const showKey = (mediaId: number, translation: TranslationType) => `show:${mediaId}:${translation}`;
+
+export async function findShow(media: Media, translation: TranslationType): Promise<ProviderAnime | null> {
+  const match = await matchProviderShow(media, translation);
+  return match ? provider.get(match.id) : null;
 }

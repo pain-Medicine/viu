@@ -4,6 +4,10 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import media.viu.viutunnel.Viutunnel
 
+// Where traffic goes while no mode is in place: nothing listens there, so
+// requests fail instead of leaving without the proxy or VPN.
+private const val BLOCKED = "http://127.0.0.1:9"
+
 class ViuNetworkModule : Module() {
   private var importServer: ConfigImportServer? = null
 
@@ -27,8 +31,10 @@ class ViuNetworkModule : Module() {
       proxy
     }
 
+    // Leaves traffic blocked rather than direct: the caller sets the next mode
+    // right after, and a VPN start can take seconds.
     Function("stopTunnel") {
-      ViuProxySelector.set(null)
+      ViuProxySelector.set(BLOCKED)
       Viutunnel.stop()
     }
 

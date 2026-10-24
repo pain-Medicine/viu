@@ -34,6 +34,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: isTV ? 'media.viu.app.tv' : 'media.viu.app',
     versionCode: buildNumber,
+    // Storage holds the WireGuard private key and the AniList token, which
+    // shouldn't end up in cloud or adb backups.
+    allowBackup: false,
     adaptiveIcon: {
       backgroundColor: GROUND,
       foregroundImage: './assets/android-icon-foreground.png',
