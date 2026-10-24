@@ -1,0 +1,58 @@
+{
+  "name": "viu",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@expo-google-fonts/archivo": "^0.4.2",
+    "@expo-google-fonts/big-shoulders-display": "^0.2.3",
+    "@expo-google-fonts/ibm-plex-mono": "^0.4.1",
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo/metro-runtime": "~58.0.15",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~58.0.19",
+    "expo-blur": "~58.0.5",
+    "expo-font": "~58.0.10",
+    "expo-image": "~58.0.17",
+    "expo-linear-gradient": "~58.0.3",
+    "expo-splash-screen": "~58.0.11",
+    "expo-status-bar": "~58.0.4",
+    "expo-system-ui": "~58.0.6",
+    "expo-video": "~58.0.12",
+    "qrcode-generator": "^2.0.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "npm:react-native-tvos@0.88.0-0",
+    "react-native-svg": "15.16.0",
+    "react-native-web": "^0.21.4"
+  },
+  "devDependencies": {
+    "@react-native-tvos/config-tv": "^0.1.7",
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "build:tunnel": "node scripts/build-tunnel.mjs",
+    "build:web": "node scripts/build.mjs web",
+    "build:android-tv": "node scripts/build.mjs android-tv",
+    "build:android": "node scripts/build.mjs android",
+    "build:android:aab": "node scripts/build.mjs android --aab",
+    "build:ios": "node scripts/build.mjs ios",
+    "build:all": "node scripts/build.mjs all"
+  },
+  "private": true,
+  "expo": {
+    "install": {
+      "exclude": [
+        "react-native"
+      ]
+    }
+  },
+  "overrides": {
+    "react-native": "npm:react-native-tvos@0.88.0-0"
+  }
+}

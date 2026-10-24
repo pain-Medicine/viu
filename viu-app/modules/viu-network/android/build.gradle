@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'media.viu'
+version = '1.0.0'
+
+android {
+  namespace "media.viu.network"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // The WireGuard tunnel, built from viu_media/assets/tunnel by `npm run build:tunnel`.
+  // A library can't bundle a local .aar, so the app links it (plugins/withViuTunnel.js).
+  compileOnly files('libs/viutunnel.aar')
+}
