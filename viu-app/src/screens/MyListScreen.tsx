@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-native';
 
-import { getMany, ListStatus, listCollection, Media } from '../api/anilist';
+import { CardMedia, getMany, ListStatus, listCollection } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
 import { useAccount } from '../state/account';
@@ -30,7 +30,7 @@ const STATUSES: { status: ListStatus; label: string }[] = [
 ];
 
 interface Item {
-  media: Media;
+  media: CardMedia;
   tag?: string;
 }
 

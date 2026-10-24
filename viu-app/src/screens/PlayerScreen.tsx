@@ -71,6 +71,14 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   });
 
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  // A stream that won't load (expired, refused) moves on to the next server,
+  // and shows an error once none is left.
+  const [playError, setPlayError] = useState<Error>();
+  useEventListener(player, 'statusChange', ({ status, error }) => {
+    if (status !== 'error') return;
+    if (optionIndex < (streams.data?.options.length ?? 0) - 1) setOptionIndex(optionIndex + 1);
+    else setPlayError(new Error(error?.message ?? "The video didn't load."));
+  });
   const time = useEvent(player, 'timeUpdate', { currentTime: 0, currentLiveTimestamp: null, currentOffsetFromLive: null, bufferedPosition: 0 });
   const duration = player.duration || 0;
 
@@ -152,7 +160,7 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
 
   const m = media.data;
   const notListed = show.data === null ? new Error(`AllAnime doesn't list this title (${translation}).`) : undefined;
-  const error = media.error ?? show.error ?? notListed ?? streams.error;
+  const error = media.error ?? show.error ?? notListed ?? streams.error ?? playError;
   const remaining = Math.max(0, duration - time.currentTime);
 
   return (

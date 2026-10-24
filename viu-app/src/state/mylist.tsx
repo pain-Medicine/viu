@@ -77,7 +77,7 @@ export function useListMembership(mediaId: number) {
     }
   };
 
-  return { signedIn: !!account, entry, inList, canToggle, loading: !!account && (remote.loading || busy), error, toggle };
+  return { entry, inList, canToggle, loading: !!account && (remote.loading || busy), error, toggle };
 }
 
 // Marks an episode as seen on AniList: raises the entry's progress to it,
@@ -88,10 +88,12 @@ export function useProgressSync() {
   return useCallback(
     async (media: { id: number; episodes: number | null }, episode: string) => {
       const n = Number(episode);
-      if (!account || !Number.isInteger(n) || n < 1) return;
+      // Some provider entries keep counting across seasons, so a number past
+      // AniList's total isn't this show's episode.
+      if (!account || !Number.isInteger(n) || n < 1 || (media.episodes && n > media.episodes)) return;
       const current = await listEntry(account.token, media.id);
       if (current && current.progress >= n && current.status !== 'PLANNING') return;
-      const done = !!media.episodes && n >= media.episodes;
+      const done = n === media.episodes;
       // A rewatch stays a rewatch until it's done.
       const status = done ? 'COMPLETED' : current?.status === 'REPEATING' ? 'REPEATING' : 'CURRENT';
       await saveListEntry(account.token, { mediaId: media.id, progress: n, status });

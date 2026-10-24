@@ -2,27 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ViuNetwork } from '../../modules/viu-network';
+import { applyNetwork, type NetworkSettings, type NetworkStatus } from './networkModes';
 
 const STORAGE_KEY = 'viu.network.v1';
-// Where a dead tunnel sends traffic: nothing listens there, so requests fail
-// instead of quietly going out without the VPN.
-const BLOCKED = 'http://127.0.0.1:9';
 
-export type NetworkMode = 'direct' | 'proxy' | 'vpn';
-
-export interface NetworkSettings {
-  mode: NetworkMode;
-  proxy: string;
-  // The WireGuard .conf text. It holds the VPN's private key and stays in the
-  // app's private storage.
-  wgConfig: string | null;
-}
-
-export type NetworkStatus =
-  | { state: 'direct' }
-  | { state: 'proxy'; proxy: string }
-  | { state: 'vpn'; proxy: string }
-  | { state: 'error'; message: string };
+export type { NetworkMode, NetworkSettings, NetworkStatus } from './networkModes';
 
 const DEFAULTS: NetworkSettings = { mode: 'direct', proxy: '', wgConfig: null };
 
@@ -37,26 +21,7 @@ interface NetworkContextValue {
 
 const NetworkContext = createContext<NetworkContextValue | null>(null);
 
-async function apply(settings: NetworkSettings): Promise<NetworkStatus> {
-  const native = ViuNetwork;
-  if (!native) return { state: 'direct' };
-  try {
-    native.stopTunnel();
-    if (settings.mode === 'proxy' && settings.proxy) {
-      native.setProxy(settings.proxy);
-      return { state: 'proxy', proxy: settings.proxy };
-    }
-    if (settings.mode === 'vpn') {
-      if (!settings.wgConfig) throw new Error('No WireGuard config imported yet.');
-      return { state: 'vpn', proxy: await native.startTunnel(settings.wgConfig) };
-    }
-    native.setProxy(null);
-    return { state: 'direct' };
-  } catch (e) {
-    native.setProxy(BLOCKED);
-    return { state: 'error', message: (e as Error).message };
-  }
-}
+const apply = (settings: NetworkSettings) => applyNetwork(settings, ViuNetwork);
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<NetworkSettings>(DEFAULTS);

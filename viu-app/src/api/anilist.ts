@@ -39,6 +39,20 @@ const MEDIA_FIELDS = `
   nextAiringEpisode { episode airingAt }
 `;
 
+// What a poster card shows. Lists that can hold hundreds of titles ask for
+// only this, not the full MEDIA_FIELDS with descriptions.
+export type CardMedia = Pick<Media, 'id' | 'title' | 'coverImage' | 'bannerImage' | 'seasonYear' | 'format' | 'episodes'>;
+
+const CARD_FIELDS = `
+  id
+  title { romaji english native userPreferred }
+  coverImage { extraLarge large color }
+  bannerImage
+  seasonYear
+  format
+  episodes
+`;
+
 async function query<T>(gql: string, variables: Record<string, unknown> = {}, token?: string): Promise<T> {
   const response = await fetch(ENDPOINT, {
     method: 'POST',
@@ -133,7 +147,7 @@ export function airedEpisodes(media: Media): number {
   return media.episodes ?? (media.nextAiringEpisode ? media.nextAiringEpisode.episode - 1 : 0);
 }
 
-export function displayTitle(media: Media): string {
+export function displayTitle(media: Pick<Media, 'title'>): string {
   return media.title.english || media.title.userPreferred || media.title.romaji || 'Untitled';
 }
 
@@ -221,16 +235,16 @@ export interface ListEntry {
 
 export interface ListGroup {
   status: ListStatus;
-  entries: (ListEntry & { media: Media })[];
+  entries: (ListEntry & { media: CardMedia })[];
 }
 
 export async function listCollection(token: string, userId: number): Promise<ListGroup[]> {
   const data = await query<{
-    MediaListCollection: { lists: { status: ListStatus | null; isCustomList: boolean; entries: (ListEntry & { media: Media })[] }[] };
+    MediaListCollection: { lists: { status: ListStatus | null; isCustomList: boolean; entries: (ListEntry & { media: CardMedia })[] }[] };
   }>(
     `query ($userId: Int) {
       MediaListCollection(userId: $userId, type: ANIME, sort: UPDATED_TIME_DESC) {
-        lists { status isCustomList entries { id status progress media { ${MEDIA_FIELDS} } } }
+        lists { status isCustomList entries { id status progress media { ${CARD_FIELDS} } } }
       }
     }`,
     { userId },

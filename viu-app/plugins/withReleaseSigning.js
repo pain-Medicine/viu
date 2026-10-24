@@ -1,7 +1,8 @@
-// Signs Android release builds with your own upload key when one is set up,
-// and falls back to the debug key otherwise, so a release APK can always be
-// built and sideloaded. The key is read at build time from Gradle properties
-// or environment variables, never stored in the repo:
+// Signs Android release builds with your own key. There is no fallback to the
+// debug key: that one is public, so anyone could sign updates with it.
+// scripts/build.mjs creates a key in ~/.viu when none is set. The key is read
+// at build time from Gradle properties or environment variables, never stored
+// in the repo:
 //
 //   VIU_UPLOAD_STORE_FILE      path to the .jks / .keystore file
 //   VIU_UPLOAD_STORE_PASSWORD
@@ -19,11 +20,6 @@ const SIGNING_CONFIG = `
                 storePassword viuProp('VIU_UPLOAD_STORE_PASSWORD')
                 keyAlias viuProp('VIU_UPLOAD_KEY_ALIAS')
                 keyPassword viuProp('VIU_UPLOAD_KEY_PASSWORD')
-            } else {
-                storeFile file('debug.keystore')
-                storePassword 'android'
-                keyAlias 'androiddebugkey'
-                keyPassword 'android'
             }
         }`;
 

@@ -87,13 +87,9 @@ gomobile init
 
 ### Signing
 
-Android release builds are signed with the debug key unless you provide your own upload key. The debug key is fine for sideloading. You need your own key for Google Play, and Android only installs an update over an existing app when both were signed with the same key. To create a key:
+Android release builds are never signed with the debug key: the one in Expo's template is public, so anyone could sign an "update" with it that installs over Viu and reads its data. The first Android build creates a key of your own in `~/.viu` (`viu-release.keystore` and its password file) and uses it from then on. Back that folder up: Android only installs an update over an existing app when both were signed with the same key.
 
-```sh
-keytool -genkeypair -v -keystore viu-upload.keystore -alias viu -keyalg RSA -keysize 2048 -validity 10000
-```
-
-Keep the file out of the repo. For local builds, set `VIU_UPLOAD_STORE_FILE`, `VIU_UPLOAD_STORE_PASSWORD`, `VIU_UPLOAD_KEY_ALIAS` and `VIU_UPLOAD_KEY_PASSWORD` as environment variables or in `~/.gradle/gradle.properties`.
+To use a key you already have instead, for example for Google Play, set `VIU_UPLOAD_STORE_FILE`, `VIU_UPLOAD_STORE_PASSWORD`, `VIU_UPLOAD_KEY_ALIAS` and `VIU_UPLOAD_KEY_PASSWORD` as environment variables or in `~/.gradle/gradle.properties`. Keep the key file out of the repo.
 
 The iOS IPA is unsigned. Sideload it with AltStore or Sideloadly, which sign it with your Apple ID. TestFlight or the App Store would need an Apple Developer account.
 

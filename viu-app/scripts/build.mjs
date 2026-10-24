@@ -14,7 +14,8 @@
 //
 // Output lands in dist/ as viu-<target>-<version>.<ext>.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -31,8 +32,9 @@ function run(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, {
     cwd: opts.cwd ?? root,
     stdio: 'inherit',
-    // npx and gradlew.bat are batch files on Windows and need a shell.
-    shell: isWindows,
+    // npx and gradlew.bat are batch files on Windows and need a shell. Nothing
+    // else gets one: cmd.exe would split arguments with spaces (-ldflags=-s -w).
+    shell: isWindows && (cmd === 'npx' || cmd.endsWith('.bat')),
     env: { ...process.env, ...opts.env },
   });
   if (result.status !== 0) {
@@ -50,7 +52,43 @@ function prebuild(platform, tv) {
 
 function gradle(task) {
   const gradlew = isWindows ? 'gradlew.bat' : './gradlew';
-  run(gradlew, [task, '--no-daemon'], { cwd: join(root, 'android') });
+  run(gradlew, [task, '--no-daemon'], { cwd: join(root, 'android'), env: signingEnv() });
+}
+
+// Release builds are signed with a key of your own. The debug key in Expo's
+// template is public, so with it anyone could sign an "update" that installs
+// over Viu and reads its data (the VPN key, the AniList token). Without
+// VIU_UPLOAD_* set, a key is made once in ~/.viu and used from then on.
+const keyDir = join(homedir(), '.viu');
+const keyStore = join(keyDir, 'viu-release.keystore');
+const keyPasswordFile = join(keyDir, 'viu-release.password');
+
+function signingEnv() {
+  if (process.env.VIU_UPLOAD_STORE_FILE) return {};
+  if (!existsSync(keyStore)) {
+    mkdirSync(keyDir, { recursive: true });
+    writeFileSync(keyPasswordFile, randomBytes(24).toString('hex'));
+    const password = readFileSync(keyPasswordFile, 'utf8');
+    // Not through run(), which would print the password.
+    const made = spawnSync(
+      'keytool',
+      ['-genkeypair', '-keystore', keyStore, '-storepass', password, '-keypass', password, '-alias', 'viu',
+        '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', '-dname', 'CN=Viu'],
+      { stdio: 'inherit' },
+    );
+    if (made.status !== 0) {
+      console.error('keytool failed. It comes with the JDK; make sure its bin folder is on your PATH.');
+      process.exit(1);
+    }
+    console.log(`\nCreated your signing key in ${keyDir}. Back up that folder: Android only installs updates signed with the same key.`);
+  }
+  const password = readFileSync(keyPasswordFile, 'utf8').trim();
+  return {
+    VIU_UPLOAD_STORE_FILE: keyStore,
+    VIU_UPLOAD_STORE_PASSWORD: password,
+    VIU_UPLOAD_KEY_ALIAS: 'viu',
+    VIU_UPLOAD_KEY_PASSWORD: password,
+  };
 }
 
 function collect(from, name) {
@@ -113,7 +151,7 @@ function buildTunnel() {
   const gopath = spawnSync('go', ['env', 'GOPATH'], { encoding: 'utf8', shell: isWindows }).stdout?.trim() || join(homedir(), 'go');
   const local = join(gopath, 'bin', isWindows ? 'gomobile.exe' : 'gomobile');
   const gomobile = existsSync(local) ? local : 'gomobile';
-  if (spawnSync(gomobile, ['version'], { shell: isWindows }).error) {
+  if (spawnSync(gomobile, ['version']).error) {
     console.error('gomobile not found. Install it with:\n  go install golang.org/x/mobile/cmd/gomobile@latest\n  gomobile init');
     process.exit(1);
   }
@@ -158,9 +196,7 @@ switch (target) {
       ? join(root, 'android/app/build/outputs/bundle/release/app-release.aab')
       : join(root, 'android/app/build/outputs/apk/release/app-release.apk');
     collect(from, `viu-${target}-${version}.${aab ? 'aab' : 'apk'}`);
-    if (!process.env.VIU_UPLOAD_STORE_FILE) {
-      console.log('Signed with the debug key (fine for sideloading). Set VIU_UPLOAD_* to sign with your own key.');
-    }
+    console.log(`Signed with ${process.env.VIU_UPLOAD_STORE_FILE ?? keyStore}.`);
     break;
   }
 

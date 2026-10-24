@@ -18,9 +18,7 @@ export type Route =
   | { name: 'player'; mediaId: number; episode: string; translation: TranslationType };
 
 interface NavContextValue {
-  route: Route;
   stack: Route[];
-  depth: number;
   push: (route: Route) => void;
   replace: (route: Route) => void;
   back: () => boolean;
@@ -76,7 +74,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [back]);
 
   const value = useMemo(
-    () => ({ route: stack[stack.length - 1], stack, depth: stack.length, push, replace, back, goTo }),
+    () => ({ stack, push, replace, back, goTo }),
     [stack, push, replace, back, goTo],
   );
   return <NavContext.Provider value={value}>{children}</NavContext.Provider>;

@@ -11,7 +11,7 @@ const FORMATS: Record<string, string> = {
   MUSIC: 'Music',
 };
 
-export const formatLabel = (m: Media) => (m.format ? FORMATS[m.format] ?? m.format : 'Anime');
+export const formatLabel = (m: Pick<Media, 'format'>) => (m.format ? FORMATS[m.format] ?? m.format : 'Anime');
 
 export function metaLine(m: Media, opts: { episodes?: boolean; status?: boolean; genres?: boolean } = {}): string {
   const parts = [

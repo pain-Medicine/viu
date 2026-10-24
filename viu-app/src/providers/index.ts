@@ -55,7 +55,7 @@ export async function matchProviderShow(
   const wanted = new Set(titles.map(normalize));
   // Airing shows have no total yet, so compare with what has aired.
   const target = airedEpisodes(media);
-  for (const q of [media.title.romaji, media.title.english].filter((t): t is string => !!t)) {
+  for (const q of new Set([media.title.romaji, media.title.english].filter((t): t is string => !!t))) {
     const results = await provider.search(q, translation);
     if (!results.length) continue;
     const exact = results.find((r) => wanted.has(normalize(r.title)));

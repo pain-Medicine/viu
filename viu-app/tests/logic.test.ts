@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// The app's riskiest pure logic: what Resume plays, sign-in parsing and the
-// AllAnime key handling. Run with `npm test`.
+// The app's riskiest pure logic: what Resume plays, sign-in parsing, the
+// AllAnime key handling and the network no-leak rule. Run with `npm test`.
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
@@ -11,6 +11,7 @@ import { base64ToBytes, bytesToBase64, bytesToUtf8 } from '../src/lib/base64';
 import { CLIENT_EPOCH_MS } from '../src/providers/allanime/constants';
 import { AllAnimeKeys } from '../src/providers/allanime/keys';
 import { AllAnimeProvider } from '../src/providers/allanime/provider';
+import { applyNetwork, BLOCKED, type NetworkSettings } from '../src/state/networkModes';
 import { episodeProgress, type HistoryEntry, upNext } from '../src/state/progress';
 
 const entry = (episode: string, position: number, duration = 100, extra: Partial<HistoryEntry> = {}): HistoryEntry => ({
@@ -114,5 +115,40 @@ describe('AllAnimeProvider keys', () => {
     mock.method(Date, 'now', () => (week + 1) * CLIENT_EPOCH_MS + 1000);
     await provider.episodeStreams('id', '3', 'sub');
     assert.equal(bootstraps, 2);
+  });
+});
+
+describe('applyNetwork', () => {
+  // Records the last proxy the app was pointed at.
+  const fakeNative = (tunnel: () => Promise<string> = async () => '127.0.0.1:5000') => {
+    const native = { proxy: undefined as string | null | undefined, setProxy: (url: string | null) => void (native.proxy = url), startTunnel: tunnel, stopTunnel: () => {} };
+    return native;
+  };
+  const settings = (patch: Partial<NetworkSettings>): NetworkSettings => ({ mode: 'direct', proxy: '', wgConfig: null, ...patch });
+
+  it('connects directly only when asked to', async () => {
+    const native = fakeNative();
+    assert.deepEqual(await applyNetwork(settings({}), native), { state: 'direct' });
+    assert.equal(native.proxy, null);
+  });
+
+  it('routes through a set proxy or a running tunnel', async () => {
+    const native = fakeNative();
+    assert.equal((await applyNetwork(settings({ mode: 'proxy', proxy: 'http://10.0.0.2:8080' }), native)).state, 'proxy');
+    assert.equal(native.proxy, 'http://10.0.0.2:8080');
+    assert.equal((await applyNetwork(settings({ mode: 'vpn', wgConfig: '[Interface]' }), native)).state, 'vpn');
+  });
+
+  it('blocks traffic whenever a mode cannot be set up', async () => {
+    const cases: [Partial<NetworkSettings>, (() => Promise<string>)?][] = [
+      [{ mode: 'proxy', proxy: '' }],
+      [{ mode: 'vpn', wgConfig: null }],
+      [{ mode: 'vpn', wgConfig: '[Interface]' }, async () => { throw new Error('handshake failed'); }],
+    ];
+    for (const [patch, tunnel] of cases) {
+      const native = fakeNative(tunnel);
+      assert.equal((await applyNetwork(settings(patch), native)).state, 'error', JSON.stringify(patch));
+      assert.equal(native.proxy, BLOCKED, JSON.stringify(patch));
+    }
   });
 });

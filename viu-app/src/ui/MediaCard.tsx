@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 
-import { displayTitle, Media } from '../api/anilist';
+import { CardMedia, displayTitle } from '../api/anilist';
 import { useTheme } from '../state/settings';
 import { Art } from './Art';
 import { Focusable } from './Focusable';
@@ -8,7 +8,7 @@ import { ProgressBar } from './ProgressBar';
 import { Text } from './Text';
 
 interface Props {
-  media: Media;
+  media: CardMedia;
   width: number;
   height: number;
   // Landscape cards use the banner; posters use the cover.
