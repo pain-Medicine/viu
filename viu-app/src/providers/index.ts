@@ -80,7 +80,11 @@ export async function chooseShow(media: Media, choice: ProviderSearchResult): Pr
   await loadUserTitles();
   const mediaTitle = media.title.english || media.title.romaji;
   if (!mediaTitle) return;
-  const next = { ...getUserTitles(), [choice.title]: mediaTitle.toLowerCase() };
+  // A new pick replaces any earlier one for the same title, or the first
+  // pick saved would keep winning.
+  const wanted = mediaTitle.toLowerCase();
+  const next = Object.fromEntries(Object.entries(getUserTitles()).filter(([, title]) => title !== wanted));
+  next[choice.title] = wanted;
   setUserTitles(next);
   await AsyncStorage.setItem(USER_TITLES_KEY, JSON.stringify(next)).catch(() => {});
 }
