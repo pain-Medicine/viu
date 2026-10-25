@@ -10,7 +10,9 @@ import { SkipInterval, skipTimes } from '../api/aniskip';
 import { type AsyncState, useAsync } from '../lib/useAsync';
 import { useReduceMotion } from '../lib/useReduceMotion';
 import { useNav, useScreenActive } from '../nav/navigation';
-import { findShow, playableUrl, provider, type ProviderAnime, showKey, TranslationType } from '../providers';
+import { type EpisodeStreams, findShow, playableUrl, provider, type ProviderAnime, showKey, TranslationType } from '../providers';
+import { preferQuality } from '../providers/quality';
+import { useAccount } from '../state/account';
 import { isWatched, useHistory } from '../state/history';
 import { useProgressSync } from '../state/mylist';
 import { useSettings } from '../state/settings';
@@ -62,31 +64,57 @@ interface PlayerProps {
 }
 
 export function PlayerScreen({ mediaId, episode, translation }: PlayerProps) {
+  const { settings } = useSettings();
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
   // Usually already cached by the details page.
   const show = useAsync(media.data ? showKey(mediaId, translation) : null, () => findShow(media.data!, translation));
   const showId = show.data?.id;
-  const streams = useAsync(showId ? `streams:${showId}:${episode}:${translation}` : null, async () => {
-    const servers = await provider.episodeStreams(showId!, episode, translation);
-    const options: Option[] = servers.flatMap((s) =>
-      s.links.map((l) => {
-        const uri = playableUrl(l.url, s.headers);
-        return { label: `${l.quality} · ${s.name}`, uri, source: { uri, headers: s.headers } };
-      }),
-    );
-    if (!options.length) throw new Error('AllAnime has no playable stream for this episode yet.');
-    return { options };
-  });
+  // Only the first server that works is fetched here (the terminal's TOP
+  // server, or the preferred one); the others when they're needed.
+  const streams = useAsync(showId ? `streams:${showId}:${episode}:${translation}` : null, () =>
+    provider.episodeStreams(showId!, episode, translation, settings.server),
+  );
+  // Counts servers found later, so the options are worked out again.
+  const [, setFound] = useState(0);
+  const options: Option[] = (streams.data?.servers ?? []).flatMap((s) =>
+    preferQuality(s.links, settings.quality).map((l) => {
+      const uri = playableUrl(l.url, s.headers);
+      return { label: `${l.quality} · ${s.name}`, uri, source: { uri, headers: s.headers } };
+    }),
+  );
   const [optionIndex, setOptionIndex] = useState(0);
   const [playError, setPlayError] = useState<Error>();
-  const option = streams.data?.options[optionIndex];
+  // Where the next stream should start, when switching mid-episode.
+  const carryOver = useRef<number | null>(null);
+  const option = options[optionIndex];
+
+  // Moves to the next stream: the next link found so far, else the next
+  // server, fetched now. A stream that failed with none left is an error; a
+  // switch with none left goes back to the first.
+  const advance = async (failure: string | null, at: number | null) => {
+    carryOver.current = at;
+    if (optionIndex < options.length - 1) return setOptionIndex(optionIndex + 1);
+    const found = await streams.data?.more().catch(() => null);
+    if (found) {
+      setFound((n) => n + 1);
+      setOptionIndex(options.length);
+    } else if (failure !== null) setPlayError(new Error(failure || 'The video didn’t load from any server.'));
+    else setOptionIndex(0);
+  };
+  // There may be another stream to switch to.
+  const canSwitch = options.length > 1 || (!!streams.data && streams.data.servers.length < streams.data.sources.length);
 
   // Each stream gets a player made with it, rather than a source swapped
   // under a <video> that's already loading (which the browser aborts).
   return (
     <Playback
       key={option ? `${optionIndex}:${option.uri}` : 'none'}
-      {...{ mediaId, episode, translation, media, show, streams, option, optionIndex, setOptionIndex, playError, setPlayError }}
+      {...{ mediaId, episode, translation, media, show, streams, option, canSwitch, advance, carryOver, playError }}
+      retryStreams={() => {
+        setPlayError(undefined);
+        setOptionIndex(0);
+        streams.retry();
+      }}
     />
   );
 }
@@ -99,19 +127,21 @@ function Playback({
   show,
   streams,
   option,
-  optionIndex,
-  setOptionIndex,
+  canSwitch,
+  advance,
+  carryOver,
   playError,
-  setPlayError,
+  retryStreams,
 }: PlayerProps & {
   media: AsyncState<Media>;
   show: AsyncState<ProviderAnime | null>;
-  streams: AsyncState<{ options: Option[] }>;
+  streams: AsyncState<EpisodeStreams>;
   option: Option | undefined;
-  optionIndex: number;
-  setOptionIndex: (update: number | ((i: number) => number)) => void;
+  canSwitch: boolean;
+  advance: (failure: string | null, at: number | null) => Promise<void>;
+  carryOver: { current: number | null };
   playError: Error | undefined;
-  setPlayError: (error: Error | undefined) => void;
+  retryStreams: () => void;
 }) {
   const { theme, settings } = useSettings();
   const c = theme.colors;
@@ -119,15 +149,20 @@ function Playback({
   const active = useScreenActive();
   const history = useHistory();
   const syncProgress = useProgressSync();
+  const { account } = useAccount();
 
   const player = useVideoPlayer(option?.source ?? null, (p) => {
     p.timeUpdateEventInterval = 1;
   });
 
-  // Picks up where the last session of this episode stopped.
+  // Picks up where the last session of this episode stopped, or where the
+  // previous stream was when switching servers.
   const last = history.get(mediaId);
   const saved = last?.episodes?.[episode] ?? (last?.episode === episode ? last : undefined);
-  const resumeAt = useRef(saved && saved.duration - saved.position > 30 ? saved.position : 0);
+  const resumeAt = useRef(
+    carryOver.current ??
+      (settings.continueFromHistory && saved && saved.duration - saved.position > 30 ? saved.position : 0),
+  );
   // The web player never sends sourceLoad, so playback starts the first time
   // the stream is ready instead.
   const started = useRef(false);
@@ -136,6 +171,7 @@ function Playback({
     started.current = true;
     if (resumeAt.current > 0) player.currentTime = resumeAt.current;
     resumeAt.current = 0;
+    carryOver.current = null;
     player.play();
   });
 
@@ -148,8 +184,7 @@ function Playback({
   // and shows an error once none is left.
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (status !== 'error') return;
-    if (optionIndex < (streams.data?.options.length ?? 0) - 1) setOptionIndex(optionIndex + 1);
-    else setPlayError(new Error(error?.message ?? "The video didn’t load from any server."));
+    advance(error?.message ?? '', player.currentTime > 0 ? player.currentTime : null);
   });
   const time = useEvent(player, 'timeUpdate', {
     currentTime: 0,
@@ -161,19 +196,28 @@ function Playback({
 
   const lastSaved = useRef(0);
   const synced = useRef(false);
+  // With tracking set to ask, a watched episode offers the AniList update.
+  const [askSync, setAskSync] = useState(false);
   const save = useCallback(() => {
     const position = player.currentTime;
     const total = player.duration;
     if (!(total > 0 && position > 5)) return;
     history.record({ mediaId, episode, position, duration: total });
-    // Once per episode, when it counts as watched.
-    if (!synced.current && media.data && isWatched({ position, duration: total })) {
+    // Once per episode, when it counts as watched: straight away, or after
+    // asking, as Settings say.
+    if (!synced.current && media.data && account && settings.tracking !== 'off' && isWatched({ position, duration: total })) {
       synced.current = true;
-      syncProgress(media.data, episode).catch(() => {
-        synced.current = false;
-      });
+      if (settings.tracking === 'prompt') setAskSync(true);
+      else
+        syncProgress(media.data, episode, settings.forceForwardTracking).catch(() => {
+          synced.current = false;
+        });
     }
-  }, [player, history, mediaId, episode, media.data, syncProgress]);
+  }, [player, history, mediaId, episode, media.data, account, settings.tracking, settings.forceForwardTracking, syncProgress]);
+  const confirmSync = () => {
+    setAskSync(false);
+    if (media.data) syncProgress(media.data, episode, settings.forceForwardTracking).catch(() => {});
+  };
   useEffect(() => {
     if (Math.abs(time.currentTime - lastSaved.current) >= SAVE_EVERY_S) {
       lastSaved.current = time.currentTime;
@@ -203,8 +247,11 @@ function Playback({
 
   // At the end, the next episode counts down instead of starting unasked.
   const [upNextIn, setUpNextIn] = useState<number | null>(null);
+  // With auto next on (the terminal's stream.auto_next); otherwise the
+  // controls come up with Next episode.
   useEventListener(player, 'playToEnd', () => {
-    if (next) setUpNextIn(UP_NEXT_S);
+    if (next && settings.autoNext) setUpNextIn(UP_NEXT_S);
+    else showControls();
   });
   useEffect(() => {
     if (upNextIn === null) return;
@@ -260,9 +307,10 @@ function Playback({
   // Paused, the controls stay up.
   const controlsUp = overlay === 'controls' || (!isPlaying && !buffering);
   const upNextShown = upNextIn !== null;
-  const skipShown = !!option && !playError && !!skip && !settings.autoSkip && !upNextShown;
+  const askShown = askSync && !upNextShown;
+  const skipShown = !!option && !playError && !!skip && !settings.autoSkip && !upNextShown && !askShown;
   // Which part of the screen holds the remote's focus.
-  const focusOn = upNextShown ? 'upNext' : controlsUp ? 'controls' : skipShown ? 'skip' : 'catcher';
+  const focusOn = upNextShown ? 'upNext' : askShown ? 'ask' : controlsUp ? 'controls' : skipShown ? 'skip' : 'catcher';
 
   // Remote keys while the controls are hidden. With focus on the invisible
   // catcher there's nothing for the D-pad to move to, so left and right are
@@ -279,7 +327,7 @@ function Playback({
         if (!controlsUp) peekSeek();
         return true;
       }
-      if (upNextShown) return false;
+      if (upNextShown || askShown) return false;
       if (controlsUp) {
         showControls();
         return false;
@@ -294,7 +342,7 @@ function Playback({
       showControls();
       return true;
     },
-    [togglePlay, showControls, seek, peekSeek, controlsUp, upNextShown, skipShown],
+    [togglePlay, showControls, seek, peekSeek, controlsUp, upNextShown, askShown, skipShown],
   );
   const onKeyRef = useRef(onKey);
   onKeyRef.current = onKey;
@@ -357,11 +405,7 @@ function Playback({
       ? show.retry
       : notListed
         ? undefined
-        : () => {
-            setPlayError(undefined);
-            setOptionIndex(0);
-            streams.retry();
-          };
+        : retryStreams;
   const remaining = Math.max(0, duration - time.currentTime);
   const barShown = controlsUp || overlay === 'seeking';
 
@@ -550,15 +594,14 @@ function Playback({
                   onFocus={showControls}
                 />
                 <View style={{ flex: 1 }} />
-                {streams.data && streams.data.options.length > 1 && (
+                {canSwitch && (
                   <Button
                     variant="outline"
                     size="sm"
                     label={`Switch server · ${option.label}`}
                     focusable={focusOn === 'controls'}
                     onPress={() => {
-                      resumeAt.current = player.currentTime;
-                      setOptionIndex((i) => (i + 1) % streams.data!.options.length);
+                      advance(null, player.currentTime);
                       showControls();
                     }}
                     onFocus={showControls}
@@ -611,6 +654,24 @@ function Playback({
             }}
           />
         </View>
+      )}
+
+      {askShown && m && (
+        <Panel kind="chrome" radius={36} style={{ position: 'absolute', right: 80, top: 80, width: 620, padding: 32, gap: 20 }}>
+          <Text variant="label" color={c.textMuted}>AniList</Text>
+          <Text variant="item">{`Mark episode ${episode} watched?`}</Text>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            <Button autoFocus variant="primary" icon="check" optionalIcon label="Update" onPress={confirmSync} />
+            <Button
+              variant="outline"
+              label="Not now"
+              onPress={() => {
+                setAskSync(false);
+                showControls();
+              }}
+            />
+          </View>
+        </Panel>
       )}
 
       {upNextShown && next && (

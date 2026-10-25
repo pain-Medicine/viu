@@ -1,13 +1,22 @@
 // Port of viu_media/libs/provider/anime/allanime/provider.py.
 //
-// Two sources are extracted: AllAnime's own "Default" (wixmp) and mp4upload's
-// "Mp4". The other embeds (Ok, Ak, Ss-Hls, Fm-Hls, Sw, ...) aren't supported yet.
-import { AnimeProvider, ProviderAnime, ProviderSearchResult, StreamLink, StreamServer, TranslationType } from '../types';
+// The sources extracted are the terminal's AVAILABLE_SOURCES; the other
+// embeds (Ok, Ak, Ss-Hls, Fm-Hls, Sw, ...) aren't supported there either.
+import {
+  AnimeProvider,
+  EpisodeStreams,
+  ProviderAnime,
+  ProviderSearchResult,
+  StreamLink,
+  StreamServer,
+  TranslationType,
+} from '../types';
 import {
   ANIME_GQL,
   API_BASE_URL,
   API_GRAPHQL_ENDPOINT,
   API_GRAPHQL_HEADERS,
+  API_GRAPHQL_REFERER,
   CLIENT_BUILD_ID,
   CLIENT_EPOCH_MS,
   CLIENT_KEY_LANE,
@@ -55,13 +64,41 @@ export function wixmpLinks(link: string): StreamLink[] {
   return [...mp4s, { url: link, quality: 'auto' }];
 }
 
+// AllAnime's source names and the terminal's server names for them
+// (ProviderServer in libs/provider/anime/types.py), for the ones it extracts.
+export const SOURCE_SERVERS: Record<string, string> = {
+  Default: 'wixmp',
+  Sak: 'dropbox',
+  'S-mp4': 'sharepoint',
+  'Luf-Mp4': 'gogoanime',
+  Kir: 'weTransfer',
+  'Yt-mp4': 'Yt',
+  Mp4: 'mp4-upload',
+};
+
+// "/apivtwo/clock?id=..." becomes "https://allanime.day/apivtwo/clock.json?id=...".
+export const clockJsonUrl = (url: string) => `https://${API_BASE_URL}${url.replace('clock', 'clock.json')}`;
+
+export class RateLimitError extends Error {
+  constructor(readonly seconds: number) {
+    super(`AllAnime is rate limiting requests. Try again in ${seconds} second${seconds === 1 ? '' : 's'}.`);
+  }
+}
+const rateLimitError = (seconds: number) => new RateLimitError(seconds);
+
 // The api answers a throttled or missing episode with `episode: null`, and
 // says why in `errors`.
 export function episodeQueryError(errors: { message?: string }[] | undefined): Error {
   const message = (errors ?? []).map((e) => e.message).filter(Boolean).join(' ');
   if (/too many requests/i.test(message)) {
-    const wait = /try again in (\d+) seconds?/i.exec(message)?.[1];
-    return new Error(`AllAnime is rate limiting requests. Try again in ${wait ? `${wait} seconds` : 'a minute'}.`);
+    // At least a few seconds, so a "try again in 0 seconds" can't loop.
+    const wait = Number(/try again in (\d+) seconds?/i.exec(message)?.[1] ?? 60);
+    return rateLimitError(Math.max(5, wait));
+  }
+  if (/captcha/i.test(message)) {
+    return new Error(
+      'AllAnime wants a captcha solved before it serves more episodes to this connection. Open mkissa.to in a browser, solve it, then try again.',
+    );
   }
   return new Error(`AllAnime returned no data for this episode. Try again.${message ? ` (${message})` : ''}`);
 }
@@ -72,6 +109,8 @@ export class AllAnimeProvider implements AnimeProvider {
   // The api hands out new keys every week, so they're fetched again once the
   // week changes (an app left open on a TV would otherwise keep stale ones).
   private keysWeek = -1;
+  // When a rate limit reply says episode queries may resume.
+  private blockedUntil = 0;
 
   constructor(private fetchFn: typeof fetch = (...args) => fetch(...args)) {}
 
@@ -106,7 +145,7 @@ export class AllAnimeProvider implements AnimeProvider {
 
   async search(query: string, translation: TranslationType): Promise<ProviderSearchResult[]> {
     const data = await this.graphql<{
-      shows: { edges: { _id: string; name: string; availableEpisodes: { sub?: number; dub?: number } }[] };
+      shows: { edges: { _id: string; name: string; availableEpisodes: Partial<Record<TranslationType, number>> }[] };
     }>(SEARCH_GQL, {
       // The terminal's SearchParams defaults (libs/provider/anime/params.py).
       // Results only feed the matcher, so adult and unknown entries are never
@@ -119,13 +158,17 @@ export class AllAnimeProvider implements AnimeProvider {
     return data.shows.edges.map((edge) => ({
       id: edge._id,
       title: edge.name,
-      episodes: { sub: edge.availableEpisodes?.sub ?? 0, dub: edge.availableEpisodes?.dub ?? 0 },
+      episodes: {
+        sub: edge.availableEpisodes?.sub ?? 0,
+        dub: edge.availableEpisodes?.dub ?? 0,
+        raw: edge.availableEpisodes?.raw ?? 0,
+      },
     }));
   }
 
   async get(id: string): Promise<ProviderAnime | null> {
     const data = await this.graphql<{
-      show: { _id: string; name: string; availableEpisodesDetail: { sub?: string[]; dub?: string[] } } | null;
+      show: { _id: string; name: string; availableEpisodesDetail: Partial<Record<TranslationType, string[]>> } | null;
     }>(ANIME_GQL, { showId: id });
     if (!data.show) return null;
     const sortEps = (eps: string[] = []) => [...eps].sort((a, b) => parseFloat(a) - parseFloat(b));
@@ -135,11 +178,16 @@ export class AllAnimeProvider implements AnimeProvider {
       episodes: {
         sub: sortEps(data.show.availableEpisodesDetail?.sub),
         dub: sortEps(data.show.availableEpisodesDetail?.dub),
+        raw: sortEps(data.show.availableEpisodesDetail?.raw),
       },
     };
   }
 
-  async episodeStreams(id: string, episode: string, translation: TranslationType): Promise<StreamServer[]> {
+  async episodeStreams(id: string, episode: string, translation: TranslationType, preferredServer?: string): Promise<EpisodeStreams> {
+    // After a rate limit reply, wait it out here rather than asking again and
+    // making the wait longer.
+    const wait = Math.ceil((this.blockedUntil - Date.now()) / 1000);
+    if (wait > 0) throw rateLimitError(wait);
     const keys = await this.getKeys();
     const variables = { showId: id, translationType: translation, episodeString: episode };
     const extensions = {
@@ -162,59 +210,87 @@ export class AllAnimeProvider implements AnimeProvider {
       data = keys.decryptTobeparsed<Record<string, unknown>>(data.tobeparsed);
     }
     const ep = 'episode' in data ? (data.episode as AllAnimeEpisode | null) : (data as AllAnimeEpisode);
-    if (!ep) throw episodeQueryError(json.errors);
-    const servers: StreamServer[] = [];
-    for (const source of ep.sourceUrls ?? []) {
-      try {
-        const server = await this.extract(source, ep);
-        if (server) servers.push(server);
-      } catch {
-        // One broken embed shouldn't hide the others.
-      }
+    if (!ep) {
+      const error = episodeQueryError(json.errors);
+      if (error instanceof RateLimitError) this.blockedUntil = Date.now() + error.seconds * 1000;
+      throw error;
     }
-    if (!servers.length) {
-      const names = (ep.sourceUrls ?? []).map((s) => s.sourceName).join(', ');
+
+    const all = ep.sourceUrls ?? [];
+    // The preferred server goes first; the rest keep AllAnime's order, and the
+    // first that works is used (servers.py).
+    const queue = [...all].sort(
+      (a, b) => Number(SOURCE_SERVERS[b.sourceName] === preferredServer) - Number(SOURCE_SERVERS[a.sourceName] === preferredServer),
+    );
+    const servers: StreamServer[] = [];
+    const more = async (): Promise<StreamServer | null> => {
+      while (queue.length) {
+        const source = queue.shift()!;
+        try {
+          const server = await this.extract(source, ep);
+          if (server) {
+            servers.push(server);
+            return server;
+          }
+        } catch {
+          // One broken embed shouldn't hide the others.
+        }
+      }
+      return null;
+    };
+    if (!(await more())) {
+      const names = all.map((s) => s.sourceName).join(', ');
       throw new Error(
         names
           ? `AllAnime has no playable stream for this episode yet. Its servers (${names}) aren’t supported or didn’t answer.`
           : 'AllAnime has no playable stream for this episode yet.',
       );
     }
-    return servers;
+    return { servers, sources: all.map((s) => s.sourceName), more };
   }
 
+  // extractors/extractor.py: AVAILABLE_SOURCES. The ones in OTHER_SOURCES
+  // (Ak, Vid-mp4, Ok, Ss-Hls, Fm-Hls) are skipped there too.
   private async extract(source: AllAnimeSource, episode: AllAnimeEpisode): Promise<StreamServer | null> {
     let url = source.sourceUrl;
     if (!url) return null;
     if (url.startsWith('--')) url = oneDigitSymmetricXor(56, url.slice(2));
-    if (source.sourceName === 'Default') return this.extractDefault(url, episode);
-    if (source.sourceName !== 'Mp4') return null;
+    const name = SOURCE_SERVERS[source.sourceName];
+    if (!name) return null;
+    if (name === 'mp4-upload') return this.extractMp4(url, episode);
+    if (name === 'Yt') {
+      // yt_mp4.py: the url is the stream, which wants AllAnime's Referer.
+      return { name, links: [{ url, quality: '1080' }], headers: { Referer: API_GRAPHQL_REFERER }, episodeTitle: episode.notes ?? null };
+    }
+    return this.extractClock(name, url, episode);
+  }
 
+  // mp4_upload.py
+  private async extractMp4(url: string, episode: AllAnimeEpisode): Promise<StreamServer | null> {
     const response = await this.fetchFn(url, { headers: { 'User-Agent': USER_AGENT } });
     if (!response.ok) return null;
     const html = (await response.text()).replace(/ /g, '').replace(/\n/g, '');
     const match = MP4_SERVER_JUICY_STREAM_REGEX.exec(html);
     if (!match) return null;
     return {
-      name: 'mp4upload',
+      name: 'mp4-upload',
       links: [{ url: match[1], quality: '1080' }],
       headers: { Referer: 'https://www.mp4upload.com/', 'User-Agent': USER_AGENT },
       episodeTitle: episode.notes ?? null,
     };
   }
 
-  // AllAnime's own source, a relative "/apivtwo/clock?id=..." link whose json
-  // twin lists the wixmp streams.
-  private async extractDefault(url: string, episode: AllAnimeEpisode): Promise<StreamServer | null> {
-    const response = await this.fetchFn(`https://${API_BASE_URL}${url.replace('clock', 'clock.json')}`, {
-      headers: { 'User-Agent': USER_AGENT },
-    });
+  // AllAnime's own sources (wixmp.py, dropbox.py, sharepoint.py, gogoanime.py,
+  // we_transfer.py): a relative "/apivtwo/clock?id=..." link whose json twin on
+  // allanime.day lists the streams, as objects or as bare urls.
+  private async extractClock(name: string, url: string, episode: AllAnimeEpisode): Promise<StreamServer | null> {
+    const response = await this.fetchFn(clockJsonUrl(url), { headers: { 'User-Agent': USER_AGENT } });
     if (!response.ok) return null;
-    const json = (await response.json()) as { links?: { link: string }[]; Referer?: string };
-    const links = (json.links ?? []).flatMap((l) => wixmpLinks(l.link));
+    const json = (await response.json()) as { links?: ({ link: string } | string)[]; Referer?: string };
+    const links = (json.links ?? []).flatMap((l) => wixmpLinks(typeof l === 'string' ? l : l.link));
     if (!links.length) return null;
     return {
-      name: 'wixmp',
+      name,
       links,
       headers: json.Referer ? { Referer: json.Referer } : {},
       episodeTitle: episode.notes ?? null,

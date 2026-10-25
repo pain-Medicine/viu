@@ -86,13 +86,15 @@ export function useListMembership(mediaId: number) {
 export function useProgressSync() {
   const { account, changed } = useAccount();
   return useCallback(
-    async (media: { id: number; episodes: number | null }, episode: string) => {
+    async (media: { id: number; episodes: number | null }, episode: string, forceForward = true) => {
       const n = Number(episode);
       // Some provider entries keep counting across seasons, so a number past
       // AniList's total isn't this show's episode.
       if (!account || !Number.isInteger(n) || n < 1 || (media.episodes && n > media.episodes)) return;
       const current = await listEntry(account.token, media.id);
-      if (current && current.progress >= n && current.status !== 'PLANNING') return;
+      // With forceForward (the terminal's force_forward_tracking), rewatching
+      // an earlier episode never moves progress back.
+      if (current && (forceForward ? current.progress >= n : current.progress === n) && current.status !== 'PLANNING') return;
       const done = n === media.episodes;
       // A rewatch stays a rewatch until it's done.
       const status = done ? 'COMPLETED' : current?.status === 'REPEATING' ? 'REPEATING' : 'CURRENT';

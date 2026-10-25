@@ -61,12 +61,41 @@ export function SettingsScreen() {
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <Chip label="Subtitled" selected={settings.translation === 'sub'} onPress={() => update({ translation: 'sub' })} />
               <Chip label="Dubbed" selected={settings.translation === 'dub'} onPress={() => update({ translation: 'dub' })} />
+              <Chip label="Raw" selected={settings.translation === 'raw'} onPress={() => update({ translation: 'raw' })} />
               {note('Used when an episode starts from Home. Each title can switch on its page.')}
             </View>
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <Chip label="Ask to skip" selected={!settings.autoSkip} onPress={() => update({ autoSkip: false })} />
               <Chip label="Skip automatically" selected={settings.autoSkip} onPress={() => update({ autoSkip: true })} />
               {note('Intros, recaps and credits, using AniSkip’s community timestamps.')}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              {QUALITIES.map((q) => (
+                <Chip key={q} label={`${q}p`} selected={settings.quality === q} onPress={() => update({ quality: q })} />
+              ))}
+              {note('Plays first when a server has it.')}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+              {SERVERS.map(([id, label]) => (
+                <Chip key={id} label={label} selected={settings.server === id} onPress={() => update({ server: id })} />
+              ))}
+              {note('Tried first. Top uses the first server that works.')}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              <Chip label="Stop at the end" selected={!settings.autoNext} onPress={() => update({ autoNext: false })} />
+              <Chip label="Play the next episode" selected={settings.autoNext} onPress={() => update({ autoNext: true })} />
+              {note('After a 10 second countdown you can cancel.')}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              <Chip label="Resume" selected={settings.continueFromHistory} onPress={() => update({ continueFromHistory: true })} />
+              <Chip label="Start over" selected={!settings.continueFromHistory} onPress={() => update({ continueFromHistory: false })} />
+              {note('Where a half-watched episode starts.')}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              {COMPLETE_AT.map((p) => (
+                <Chip key={p} label={`${p}%`} selected={settings.episodeCompleteAt === p} onPress={() => update({ episodeCompleteAt: p })} />
+              ))}
+              {note('How much of an episode counts as watched.')}
             </View>
           </View>
         </Section>
@@ -84,7 +113,23 @@ export function SettingsScreen() {
               <View style={{ flex: 1 }} />
               <Button variant="outline" size="sm" label="Sign out" onPress={signOut} />
             </View>
-          ) : (
+          ) : null}
+          {account && (
+            <View style={{ gap: 20, marginTop: 20 }}>
+              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                <Chip label="Update progress" selected={settings.tracking === 'auto'} onPress={() => update({ tracking: 'auto' })} />
+                <Chip label="Ask first" selected={settings.tracking === 'prompt'} onPress={() => update({ tracking: 'prompt' })} />
+                <Chip label="Don’t update" selected={settings.tracking === 'off'} onPress={() => update({ tracking: 'off' })} />
+                {note('When an episode counts as watched.')}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                <Chip label="Only forward" selected={settings.forceForwardTracking} onPress={() => update({ forceForwardTracking: true })} />
+                <Chip label="Rewatches too" selected={!settings.forceForwardTracking} onPress={() => update({ forceForwardTracking: false })} />
+                {note('Whether rewatching an earlier episode sets progress back to it.')}
+              </View>
+            </View>
+          )}
+          {account ? null : (
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <Button size="sm" label="Sign in to AniList" onPress={() => nav.push({ name: 'signin' })} />
               {note('Shows your AniList lists in My List and marks episodes watched as you finish them.')}
@@ -338,3 +383,17 @@ function ThemeCard({
     </Focusable>
   );
 }
+
+const QUALITIES = ['1080', '720', '480', '360'] as const;
+const COMPLETE_AT = [70, 80, 90];
+// The terminal's ProviderServer values for AllAnime.
+const SERVERS: [string, string][] = [
+  ['TOP', 'Top'],
+  ['wixmp', 'wixmp'],
+  ['mp4-upload', 'mp4upload'],
+  ['sharepoint', 'SharePoint'],
+  ['dropbox', 'Dropbox'],
+  ['gogoanime', 'Gogoanime'],
+  ['weTransfer', 'WeTransfer'],
+  ['Yt', 'Yt'],
+];

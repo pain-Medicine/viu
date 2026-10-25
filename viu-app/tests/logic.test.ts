@@ -10,7 +10,8 @@ import { airedEpisodes, type Media, tokenFrom } from '../src/api/anilist';
 import { base64ToBytes, bytesToBase64, bytesToUtf8 } from '../src/lib/base64';
 import { CLIENT_EPOCH_MS } from '../src/providers/allanime/constants';
 import { AllAnimeKeys } from '../src/providers/allanime/keys';
-import { AllAnimeProvider, episodeQueryError, wixmpLinks } from '../src/providers/allanime/provider';
+import { AllAnimeProvider, episodeQueryError, RateLimitError, wixmpLinks } from '../src/providers/allanime/provider';
+import { preferQuality } from '../src/providers/quality';
 import { findBestMatch, ratio, searchQueries, tokenSetRatio } from '../src/providers/match';
 import { applyNetwork, BLOCKED, type NetworkSettings } from '../src/state/networkModes';
 import { episodeProgress, type HistoryEntry, upNext } from '../src/state/progress';
@@ -141,7 +142,9 @@ describe('AllAnime streams', () => {
     assert.equal(body?.variables.countryOrigin, undefined);
   });
   it('says when the api is rate limiting or has no episode', () => {
-    assert.match(episodeQueryError([{ message: 'Too many requests, please try again in 4 seconds.' }]).message, /rate limiting.*4 seconds/);
+    assert.match(episodeQueryError([{ message: 'Too many requests, please try again in 40 seconds.' }]).message, /rate limiting.*40 seconds/);
+    // A wait too short to matter still waits a little.
+    assert.match(episodeQueryError([{ message: 'Too many requests, please try again in 1 seconds.' }]).message, /5 seconds/);
     assert.match(episodeQueryError(undefined).message, /no data for this episode/);
   });
   it('reads the Default source from allanime.day and names unsupported servers', async () => {
@@ -156,17 +159,88 @@ describe('AllAnime streams', () => {
       return new Response(JSON.stringify({ data: { episode: { sourceUrls } } }));
     }) as typeof fetch;
     const provider = new AllAnimeProvider(fetchFn);
-    const servers = await provider.episodeStreams('id', '1', 'sub');
+    const { servers } = await provider.episodeStreams('id', '1', 'sub');
     assert.ok(urls.includes('https://allanime.day/apivtwo/clock.json?id=ab'));
     assert.deepEqual(servers.map((s) => [s.name, s.links, s.headers]), [['wixmp', [{ url: 'https://x.example/v.mp4', quality: '1080' }], {}]]);
     await assert.rejects(provider.episodeStreams('id', '2', 'sub'), /servers \(Ok\)/);
   });
 });
 
+describe('AllAnime servers', () => {
+  // An api that lists `sources` for every episode and answers clock.json
+  // and mp4upload pages; records what was fetched.
+  const fake = (sources: { sourceName: string; sourceUrl: string }[], episodeReply?: unknown) => {
+    const urls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      urls.push(url);
+      if (url.includes('bootstrap')) return new Response(JSON.stringify({ epoch: 1, partB: bytesToBase64(new Uint8Array(32)) }));
+      if (url.includes('clock.json?id=dead')) return new Response('error', { status: 500 });
+      if (url.includes('clock.json?id=urls')) return new Response(JSON.stringify({ links: ['https://dropbox.example/v.mp4'] }));
+      if (url.includes('clock.json')) return new Response(JSON.stringify({ links: [{ link: 'https://x.example/v.mp4', resolutionStr: 'Mp4' }] }));
+      if (url.includes('mp4upload')) return new Response('player.src({type:"video/mp4",src:"https://a1.mp4upload.com:183/d/x/video.mp4"})');
+      return new Response(JSON.stringify(episodeReply ?? { data: { episode: { sourceUrls: sources } } }));
+    }) as typeof fetch;
+    return { urls, provider: new AllAnimeProvider(fetchFn) };
+  };
+  const clock = (id: string) => `/apivtwo/clock?id=${id}`;
+
+  it('fetches only the first server that works, and the next on demand', async () => {
+    const { urls, provider } = fake([
+      { sourceName: 'Ok', sourceUrl: 'https://ok.ru/x' },
+      { sourceName: 'S-mp4', sourceUrl: clock('dead') },
+      { sourceName: 'Default', sourceUrl: clock('a') },
+      { sourceName: 'Mp4', sourceUrl: 'https://www.mp4upload.com/embed-x.html' },
+    ]);
+    const streams = await provider.episodeStreams('id', '1', 'sub');
+    assert.deepEqual(streams.servers.map((s) => s.name), ['wixmp']);
+    assert.equal(urls.filter((u) => u.includes('mp4upload')).length, 0);
+    assert.deepEqual(streams.sources, ['Ok', 'S-mp4', 'Default', 'Mp4']);
+    assert.equal((await streams.more())?.name, 'mp4-upload');
+    assert.equal(await streams.more(), null);
+  });
+
+  it('tries the preferred server first', async () => {
+    const { provider } = fake([
+      { sourceName: 'Default', sourceUrl: clock('a') },
+      { sourceName: 'Mp4', sourceUrl: 'https://www.mp4upload.com/embed-x.html' },
+    ]);
+    const { servers } = await provider.episodeStreams('id', '1', 'sub', 'mp4-upload');
+    assert.deepEqual(servers.map((s) => [s.name, s.headers.Referer]), [['mp4-upload', 'https://www.mp4upload.com/']]);
+  });
+
+  it('reads the terminal\'s other AllAnime servers', async () => {
+    const { provider } = fake([{ sourceName: 'Sak', sourceUrl: clock('urls') }]);
+    const { servers } = await provider.episodeStreams('id', '1', 'sub');
+    assert.deepEqual(servers.map((s) => [s.name, s.links[0].url]), [['dropbox', 'https://dropbox.example/v.mp4']]);
+    for (const [sourceName, name] of [['S-mp4', 'sharepoint'], ['Luf-Mp4', 'gogoanime'], ['Kir', 'weTransfer']]) {
+      const one = fake([{ sourceName, sourceUrl: clock('a') }]);
+      assert.equal((await one.provider.episodeStreams('id', '1', 'sub')).servers[0].name, name);
+    }
+    const yt = fake([{ sourceName: 'Yt-mp4', sourceUrl: 'https://tools.fast4speed.rsvp/media/x.mp4' }]);
+    const [server] = (await yt.provider.episodeStreams('id', '1', 'sub')).servers;
+    assert.deepEqual([server.name, server.links[0].url, server.headers.Referer], ['Yt', 'https://tools.fast4speed.rsvp/media/x.mp4', 'https://mkissa.to']);
+  });
+
+  it('waits out a rate limit without asking again, and names a captcha', async () => {
+    const limited = fake([], { data: { episode: null }, errors: [{ message: 'Too many requests, please try again in 30 seconds.' }] });
+    await assert.rejects(limited.provider.episodeStreams('id', '1', 'sub'), (e: Error) => e instanceof RateLimitError && /30 seconds/.test(e.message));
+    const asked = limited.urls.length;
+    await assert.rejects(limited.provider.episodeStreams('id', '2', 'sub'), /rate limiting/);
+    assert.equal(limited.urls.length, asked);
+    assert.match(episodeQueryError([{ message: 'NEED_CAPTCHA' }]).message, /captcha.*mkissa.to/);
+  });
+
+  it('plays the preferred quality first', () => {
+    const links = [{ url: 'a', quality: '1080' }, { url: 'b', quality: '720' }, { url: 'c', quality: 'auto' }];
+    assert.deepEqual(preferQuality(links, '720').map((l) => l.url), ['b', 'a', 'c']);
+    assert.deepEqual(preferQuality(links, '360').map((l) => l.url), ['a', 'b', 'c']);
+  });
+});
+
 describe('findBestMatch', () => {
   const media = (romaji: string, english: string | null, episodes: number | null, next: number | null, synonyms: string[] = []) =>
     ({ title: { romaji, english, native: null, userPreferred: romaji }, synonyms, episodes, nextAiringEpisode: next ? { episode: next, airingAt: 0 } : null }) as Media;
-  const result = (id: string, title: string, sub: number, dub = 0) => ({ id, title, episodes: { sub, dub } });
+  const result = (id: string, title: string, sub: number, dub = 0) => ({ id, title, episodes: { sub, dub, raw: 0 } });
 
   it('maps One Piece to AllAnime\'s "1P" through the normalizer', () => {
     const results = [

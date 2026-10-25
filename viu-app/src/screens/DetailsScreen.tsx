@@ -4,7 +4,7 @@ import { ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-nat
 import { airedEpisodes, displayTitle, getMedia, Media, plainDescription } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
-import { findShow, ProviderUnavailableError, showKey, TranslationType } from '../providers';
+import { findShow, ProviderUnavailableError, showKey, TRANSLATIONS, TranslationType } from '../providers';
 import { episodeProgress, HistoryEntry, isWatched, progressOf, upNext, useHistory } from '../state/history';
 import { useListMembership } from '../state/mylist';
 import { useSettings } from '../state/settings';
@@ -90,8 +90,8 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
 
   const unavailable = show.error instanceof ProviderUnavailableError;
   const notFound = !show.loading && !show.error && show.data === null;
-  const other: TranslationType = translation === 'dub' ? 'sub' : 'dub';
-  const otherLabel = other === 'dub' ? 'Dub' : 'Sub';
+  const other: TranslationType = translation === 'sub' ? 'dub' : 'sub';
+  const otherLabel = TRANSLATION_LABELS[other].short;
   // Rows only for episodes that can play, except where streaming is off
   // altogether (the web build without a proxy), where the list still helps
   // browsing and the status line says why.
@@ -232,11 +232,11 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           <Hazard color={c.featureText} style={{ flex: 1 }} />
           {!theme.decor.hazard && <View style={{ flex: 1 }} />}
           <View style={{ flexDirection: 'row', gap: 8, marginRight: theme.shape.chamfer }}>
-            {(['sub', 'dub'] as const).map((t) => (
+            {TRANSLATIONS.map((t) => (
               <Chip
                 key={t}
-                label={t === 'sub' ? 'Sub' : 'Dub'}
-                accessibilityLabel={t === 'sub' ? 'Subtitled' : 'Dubbed'}
+                label={TRANSLATION_LABELS[t].short}
+                accessibilityLabel={TRANSLATION_LABELS[t].long}
                 selected={translation === t}
                 onPress={() => switchTranslation(t)}
               />
@@ -247,11 +247,11 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
         {notFound && (
           <View style={{ flex: 1, gap: 14, paddingTop: 12 }}>
             <Text variant="item" color={c.featureText}>
-              {`No ${translation === 'dub' ? 'dub' : 'subtitled version'} on AllAnime`}
+              {`No ${TRANSLATION_LABELS[translation].noun} on AllAnime`}
             </Text>
             <Text
               color={c.featureMuted}
-            >{`AllAnime doesn’t list this title in ${translation === 'dub' ? 'English dub' : 'subtitles'}. The ${otherLabel.toLowerCase()} may be there.`}</Text>
+            >{`AllAnime doesn’t list this title ${TRANSLATION_LABELS[translation].as}. The ${otherLabel.toLowerCase()} may be there.`}</Text>
           </View>
         )}
 
@@ -453,3 +453,11 @@ function EpisodeRow({
     </Focusable>
   );
 }
+
+// Sub, dub and raw (Japanese audio without subtitles), as the panel and its
+// messages name them.
+const TRANSLATION_LABELS: Record<TranslationType, { short: string; long: string; noun: string; as: string }> = {
+  sub: { short: 'Sub', long: 'Subtitled', noun: 'subtitled version', as: 'with subtitles' },
+  dub: { short: 'Dub', long: 'Dubbed', noun: 'dub', as: 'in English dub' },
+  raw: { short: 'Raw', long: 'Raw, no subtitles', noun: 'raw version', as: 'raw' },
+};

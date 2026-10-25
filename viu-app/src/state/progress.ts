@@ -1,8 +1,12 @@
 // Watch progress rules, kept free of React and storage so they can be tested in Node.
 
 // An episode counts as watched once this much of it has played, which
-// covers stopping during the credits.
-const WATCHED_AT = 0.9;
+// covers stopping during the credits. The terminal's episode_complete_at,
+// set from Settings.
+let watchedAt = 0.8;
+export function setWatchedAt(percent: number) {
+  watchedAt = Math.min(100, Math.max(1, percent)) / 100;
+}
 
 export interface EpisodeProgress {
   position: number;
@@ -23,7 +27,7 @@ export interface HistoryEntry {
 
 export const progressOf = (e?: EpisodeProgress) => (e && e.duration > 0 ? Math.min(1, e.position / e.duration) : 0);
 
-export const isWatched = (e?: EpisodeProgress) => progressOf(e) >= WATCHED_AT;
+export const isWatched = (e?: EpisodeProgress) => progressOf(e) >= watchedAt;
 
 // Progress of one episode of a show. `order` and `resumeOrder` are the
 // episode's and the last-played episode's positions in the episode list,

@@ -95,7 +95,7 @@ export function findBestMatch(results: ProviderSearchResult[], media: Media): Pr
     const normTitle = providerTitleToMediaTitle(title).toLowerCase();
     if (validTitles.includes(normTitle) || validBare.has(bare(normTitle))) return result;
 
-    const episodes = Math.max(result.episodes.sub, result.episodes.dub);
+    const episodes = Math.max(result.episodes.sub, result.episodes.dub, result.episodes.raw);
     let bonus = 0;
     if (expected !== null && episodes > 0) {
       const diff = Math.abs(expected - episodes);

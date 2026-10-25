@@ -18,7 +18,8 @@ import { pathToFileURL } from 'node:url';
 export const DEFAULT_PORT = 8787;
 
 // Only the provider's hosts, so this can't be used to reach anything else.
-const ALLOWED_HOSTS = ['api.mkissa.net', 'allanime.day', 'mp4upload.com'];
+// fast4speed.rsvp serves the Yt-mp4 source, which wants AllAnime's Referer.
+const ALLOWED_HOSTS = ['api.mkissa.net', 'allanime.day', 'mp4upload.com', 'fast4speed.rsvp'];
 
 export function isAllowed(target) {
   let url;
