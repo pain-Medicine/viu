@@ -4,7 +4,7 @@ All builds run on your own machine from the `viu-app` folder on the `React-Nativ
 
 ## Every build
 
-1. Install Node 22 or newer.
+1. Install Node 20.19 or newer.
 2. Install the dependencies once (and again after changing branches):
    ```sh
    cd viu-app
@@ -57,17 +57,25 @@ The phone app (`media.viu.app`) and the TV app (`media.viu.app.tv`) have differe
 
 **Needs:** Node only.
 
+**Run it while developing:**
+```sh
+npm run web
+```
+This opens the app on http://localhost:8081 and starts the local provider proxy, so episodes play.
+
 **Build:**
 ```sh
 npm run build:web
 ```
-**Output:** `dist/web/`, a static site you can host anywhere.
+**Output:** `dist/web/`, a static site.
 
-Browsing and search work in any browser. To play episodes, the web build needs a pass-through proxy because browsers block the requests AllAnime needs. Set its address before building:
-```powershell
-$env:EXPO_PUBLIC_PROVIDER_PROXY = "http://127.0.0.1:8787/"; npm run build:web
+**Serve the build:**
+```sh
+npm run serve:web
 ```
-The README's "Proxy and VPN" section explains what the proxy has to do. Make sure it retries a failed request, because the first connection to the AllAnime API sometimes fails.
+This serves `dist/web` on http://localhost:8080 together with the provider proxy. Ctrl+C stops both.
+
+The proxy (`scripts/provider-proxy.mjs`) is needed because browsers can't send the `Origin` and `Referer` headers AllAnime and mp4upload require. It runs on your own machine, listens only on `127.0.0.1:8787`, and only forwards to those two sites. If you host `dist/web` somewhere else, each viewer needs the proxy running on their machine (`npm run proxy`). Alternatively, build with `EXPO_PUBLIC_PROVIDER_PROXY` set to a proxy address of your own.
 
 ## iOS (iPhone and iPad)
 

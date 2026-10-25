@@ -3,7 +3,7 @@
 //
 //   node scripts/build.mjs <target> [--aab]
 //
-//   web          static site in dist/web
+//   web          static site in dist/web (serve it with `npm run serve:web`)
 //   android-tv   Android TV APK (sideload with adb or a file manager)
 //   android      phone/tablet APK, or an AAB for Google Play with --aab
 //                (both Android targets build the WireGuard library from Go
@@ -176,7 +176,11 @@ function build(target) {
 switch (target) {
   case 'web': {
     rmSync(join(dist, 'web'), { recursive: true, force: true });
-    run('npx', ['expo', 'export', '--platform', 'web', '--output-dir', 'dist/web']);
+    // Points the site at the local provider proxy that `npm run serve:web`
+    // starts, unless you set EXPO_PUBLIC_PROVIDER_PROXY to one of your own.
+    run('npx', ['expo', 'export', '--platform', 'web', '--output-dir', 'dist/web'], {
+      env: { EXPO_PUBLIC_PROVIDER_PROXY: process.env.EXPO_PUBLIC_PROVIDER_PROXY || 'http://127.0.0.1:8787/' },
+    });
     console.log(`\nBuilt ${join(dist, 'web')}`);
     break;
   }

@@ -36,15 +36,17 @@
   },
   "scripts": {
     "start": "expo start",
-    "web": "expo start --web",
+    "web": "node scripts/web.mjs",
     "typecheck": "tsc --noEmit",
     "build:web": "node scripts/build.mjs web",
+    "serve:web": "node scripts/serve-web.mjs",
     "build:android-tv": "node scripts/build.mjs android-tv",
     "build:android": "node scripts/build.mjs android",
     "build:android:aab": "node scripts/build.mjs android --aab",
     "build:ios": "node scripts/build.mjs ios",
     "build:all": "node scripts/build.mjs all",
-    "test": "tsx --test tests/logic.test.ts"
+    "test": "tsx --test tests/logic.test.ts tests/proxy.test.ts",
+    "proxy": "node scripts/provider-proxy.mjs"
   },
   "private": true,
   "expo": {

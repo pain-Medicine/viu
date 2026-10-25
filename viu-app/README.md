@@ -48,7 +48,7 @@ You need Node 20.19 or newer.
 ```sh
 cd viu-app
 npm install
-npm run web          # dev server in the browser
+npm run web          # dev server in the browser, plus the local provider proxy
 ```
 
 Use the arrow keys to move focus, Enter to select, and Escape or Backspace to go back. On the Search screen you can also type with a real keyboard.
@@ -105,13 +105,9 @@ How it works: `modules/viu-network` installs an app-wide Java `ProxySelector` wh
 
 ## Streaming on web
 
-Browsers block the cross-site requests and the `Referer` header that the provider needs. So in a plain browser build you can browse, search and open titles, but playback shows a message instead. To stream on web, run a small pass-through proxy and point the build at it:
+Browsers don't let a page set `Origin` or `Referer`. AllAnime's key endpoint sits behind a Cloudflare rule that only lets requests through when those say mkissa.to, and mp4upload's pages send no CORS headers. So the web build sends those requests through a small local proxy, `scripts/provider-proxy.mjs`, which listens only on `127.0.0.1:8787` and only forwards to the AllAnime API and mp4upload hosts. It starts by itself with `npm run web` and `npm run serve:web`. You can also run it alone with `npm run proxy`. The Android TV and Android apps send these headers themselves and never use it.
 
-```sh
-EXPO_PUBLIC_PROVIDER_PROXY=https://your-proxy.example/fetch npm run web
-```
-
-The proxy receives the target in a `url` query parameter and the headers to send as `x-forward-<name>` headers. It should return the upstream response with CORS headers added. Video requests come from the browser's video player, which can't set headers, so they carry the `Referer` to send in a `referer` query parameter instead; for those the proxy should also pass the browser's `Range` header through and return the upstream status (206 for a range), so seeking works. The Android TV app doesn't need a proxy.
+The proxy gets the target in a `url` query parameter and the headers to send as `x-forward-<name>` headers. Video requests come from the browser's player, which can't set headers, so they carry the Referer in a `referer` query parameter instead. The proxy passes `Range` through, so seeking works, and it retries a failed connection, because on some networks the first connection to the API fails. To use a proxy you run somewhere else, set `EXPO_PUBLIC_PROVIDER_PROXY` to its address before `npm run web` or `npm run build:web`.
 
 ## Layout
 
@@ -119,6 +115,8 @@ The proxy receives the target in a `url` query parameter and the headers to send
 app.config.ts            app config for every target (TV vs phone, IDs, icons)
 plugins/                 config plugins (Android release signing)
 scripts/build.mjs        build script for every target
+scripts/provider-proxy.mjs  local proxy the web build streams through
+scripts/web.mjs, serve-web.mjs  start the web app or built site together with that proxy
 App.tsx                  fonts, providers, screen stack
 src/
   api/anilist.ts         AniList GraphQL client (catalogue, schedule, signed-in list calls)
