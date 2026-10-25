@@ -55,14 +55,14 @@ Use the arrow keys to move focus, Enter to select, and Escape or Backspace to go
 
 ## Builds
 
-Every target builds on your own machine with one command. There's no cloud CI: nothing is built on GitHub. `npm run build:all` builds everything this machine can: web, Android TV and Android everywhere, plus iOS on a Mac.
+Step-by-step instructions for each target are in [BUILD.md](BUILD.md). Every target builds on your own machine with one command. There's no cloud CI: nothing is built on GitHub. `npm run build:all` builds everything this machine can: web, Android TV and Android everywhere, plus iOS on a Mac.
 
 | Target | Command | Output in `dist/` | Needs |
 | --- | --- | --- | --- |
 | Web | `npm run build:web` | `web/` static site | Node |
 | Android TV | `npm run build:android-tv` | `viu-android-tv-<version>.apk` | JDK 17, Android SDK, Go, the NDK and gomobile |
-| Android phone/tablet | `npm run build:android` | `viu-android-<version>.apk` | JDK 17, Android SDK |
-| Google Play bundle | `npm run build:android:aab` | `viu-android-<version>.aab` | JDK 17, Android SDK |
+| Android phone/tablet | `npm run build:android` | `viu-android-<version>.apk` | JDK 17, Android SDK, Go, the NDK and gomobile |
+| Google Play bundle | `npm run build:android:aab` | `viu-android-<version>.aab` | JDK 17, Android SDK, Go, the NDK and gomobile |
 | iPhone/iPad | `npm run build:ios` | `viu-ios-<version>-unsigned.ipa` | macOS, Xcode |
 
 On Windows, the Android builds need JDK 17 and the Android SDK. Installing Android Studio gives you both. Then set `ANDROID_HOME` to the SDK folder, usually `%LOCALAPPDATA%\Android\Sdk`. The script checks for both and tells you what's missing. To set the version name or build number, set `VIU_VERSION` or `VIU_BUILD_NUMBER` before building. Android only installs a new build over an old one when the build number is higher.
