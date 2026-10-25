@@ -11,6 +11,7 @@ import { base64ToBytes, bytesToBase64, bytesToUtf8 } from '../src/lib/base64';
 import { CLIENT_EPOCH_MS } from '../src/providers/allanime/constants';
 import { AllAnimeKeys } from '../src/providers/allanime/keys';
 import { AllAnimeProvider, episodeQueryError, wixmpLinks } from '../src/providers/allanime/provider';
+import { findBestMatch, ratio, searchQueries, tokenSetRatio } from '../src/providers/match';
 import { applyNetwork, BLOCKED, type NetworkSettings } from '../src/state/networkModes';
 import { episodeProgress, type HistoryEntry, upNext } from '../src/state/progress';
 
@@ -148,6 +149,44 @@ describe('AllAnime streams', () => {
     assert.ok(urls.includes('https://allanime.day/apivtwo/clock.json?id=ab'));
     assert.deepEqual(servers.map((s) => [s.name, s.links, s.headers]), [['wixmp', [{ url: 'https://x.example/v.mp4', quality: '1080' }], {}]]);
     await assert.rejects(provider.episodeStreams('id', '2', 'sub'), /servers \(Ok\)/);
+  });
+});
+
+describe('findBestMatch', () => {
+  const media = (romaji: string, english: string | null, episodes: number | null, next: number | null, synonyms: string[] = []) =>
+    ({ title: { romaji, english, native: null, userPreferred: romaji }, synonyms, episodes, nextAiringEpisode: next ? { episode: next, airingAt: 0 } : null }) as Media;
+  const result = (id: string, title: string, sub: number, dub = 0) => ({ id, title, episodes: { sub, dub } });
+
+  it('maps One Piece to AllAnime\'s "1P" through the normalizer', () => {
+    const results = [
+      result('ReooPAxPMsHM4KPMY', '1P', 1181, 1150),
+      result('EzPPDWAbAnwR2HSHA', 'ONE PIECE HEROINES', 1),
+      result('PM4hwu3HqnvjbPHjq', 'Koisuru ONE PIECE', 5),
+      result('bNxsZLcHxRPbs4eTf', 'ONE PIECE: Gyojin Tou-hen', 21, 21),
+      result('zdoBnQCG5wi52KHyw', 'One Piece Film: Red', 1, 1),
+    ];
+    assert.equal(findBestMatch(results, media('ONE PIECE', 'ONE PIECE', null, 1181, ['OP']))?.id, 'ReooPAxPMsHM4KPMY');
+    assert.deepEqual(searchQueries(media('ONE PIECE', 'ONE PIECE', null, 1181, ['OP'])), ['one piece', 'op']);
+  });
+
+  it('takes the series over its sequels, movies and OVAs', () => {
+    const aot = [
+      result('9nSb8m9Nufa2TD7oP', 'Shingeki no Kyojin Movie: Kanketsu-hen - The Last Attack', 1, 1),
+      result('XYfeCqq4yyGS2zxFx', 'Shingeki no Kyojin Season 2', 12, 12),
+      result('C9d6MjbQk3ddHAZnD', 'Shingeki no Kyojin OVA', 8, 3),
+      result('wbnpCxPu3fyk9XSaZ', 'Shingeki no Kyojin', 27, 25),
+    ];
+    assert.equal(findBestMatch(aot, media('Shingeki no Kyojin', 'Attack on Titan', 25, null))?.id, 'wbnpCxPu3fyk9XSaZ');
+    const frieren = [
+      result('mini', 'Sousou no Frieren: ●● no Mahou', 10),
+      result('ReHMC7TQnch3C6z8j', 'Sousou no Frieren', 28, 28),
+    ];
+    assert.equal(findBestMatch(frieren, media('Sousou no Frieren', 'Frieren: Beyond Journey’s End', 28, null))?.id, 'ReHMC7TQnch3C6z8j');
+  });
+
+  it('scores like the terminal\'s pure Python fuzz', () => {
+    assert.equal(ratio('one piece', 'one piece film red'), 50);
+    assert.equal(tokenSetRatio('piece one', 'one piece'), 100);
   });
 });
 
