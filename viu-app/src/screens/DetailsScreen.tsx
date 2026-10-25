@@ -321,7 +321,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
         )}
 
         <Text variant="note" color={c.featureMuted}>
-          {status ?? (showRows ? `Streams from AllAnime  ·  mp4upload  ·  ${countLabel(episodes.length, 'episode')}` : 'Streams from AllAnime')}
+          {status ?? (showRows ? `Streams from AllAnime  ·  ${countLabel(episodes.length, 'episode')}` : 'Streams from AllAnime')}
         </Text>
       </Panel>
     </View>

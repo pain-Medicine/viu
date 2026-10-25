@@ -105,7 +105,7 @@ How it works: `modules/viu-network` installs an app-wide Java `ProxySelector` wh
 
 ## Streaming on web
 
-Browsers don't let a page set `Origin` or `Referer`. AllAnime's key endpoint sits behind a Cloudflare rule that only lets requests through when those say mkissa.to, and mp4upload's pages send no CORS headers. So the web build sends those requests through a small local proxy, `scripts/provider-proxy.mjs`, which listens only on `127.0.0.1:8787` and only forwards to the AllAnime API and mp4upload hosts. It starts by itself with `npm run web` and `npm run serve:web`. You can also run it alone with `npm run proxy`. The Android TV and Android apps send these headers themselves and never use it.
+Browsers don't let a page set `Origin` or `Referer`. AllAnime's key endpoint sits behind a Cloudflare rule that only lets requests through when those say mkissa.to, and mp4upload's pages send no CORS headers. So the web build sends those requests through a small local proxy, `scripts/provider-proxy.mjs`, which listens only on `127.0.0.1:8787` and only forwards to the AllAnime API (api.mkissa.net, allanime.day) and mp4upload hosts. AllAnime's own wixmp videos allow any origin, so the browser loads those directly. It starts by itself with `npm run web` and `npm run serve:web`. You can also run it alone with `npm run proxy`. The Android TV and Android apps send these headers themselves and never use it.
 
 The proxy gets the target in a `url` query parameter and the headers to send as `x-forward-<name>` headers. Video requests come from the browser's player, which can't set headers, so they carry the Referer in a `referer` query parameter instead. The proxy passes `Range` through, so seeking works, and it retries a failed connection, because on some networks the first connection to the API fails. To use a proxy you run somewhere else, set `EXPO_PUBLIC_PROVIDER_PROXY` to its address before `npm run web` or `npm run build:web`.
 
@@ -121,7 +121,7 @@ App.tsx                  fonts, providers, screen stack
 src/
   api/anilist.ts         AniList GraphQL client (catalogue, schedule, signed-in list calls)
   api/aniskip.ts         AniSkip skip times
-  providers/allanime/    AllAnime port (search, episodes, mp4upload streams)
+  providers/allanime/    AllAnime port (search, episodes, wixmp and mp4upload streams)
   providers/index.ts     platform fetch, AniList → provider title matching
   theme/                 Theme type, Material Glass and Graphic Realism
   state/                 settings, per-episode watch history, AniList account, My List, saved with AsyncStorage
@@ -137,6 +137,6 @@ Every screen is laid out on a fixed 1920×1080 canvas, the same size as the desi
 - Only tested in a browser so far. The Android TV, Android and iOS builds haven't run yet (their native projects generate cleanly). Expect a fix or two on the first Gradle build, then focus-order tuning on a real TV, and a check that AllAnime accepts requests from Android's HTTP client.
 - Phones and tablets run in landscape only. The layout follows the screen's shape (from short 20:9 phones to 4:3 tablets and 4K TVs), scrolls and swipes with touch, and shows focus rings only for a remote or keyboard. Search uses the device keyboard everywhere except on a TV.
 - No Windows build yet. `scripts/build.mjs` has a `windows` placeholder, and `npm run build:windows` can be added once it's built.
-- Only the mp4upload source is extracted. Other AllAnime servers need their own extractors.
+- Only AllAnime's own "Default" (wixmp) and the mp4upload sources are extracted. Other AllAnime servers (Ok, Ak, Ss-Hls, ...) need their own extractors.
 - AniList sign-in and progress sync are checked against AniList's API (queries validate, a bad token is rejected), but haven't been run end to end with a real account yet.
 - Watch history stays on the device. It isn't synced between devices, apart from what AniList progress records.

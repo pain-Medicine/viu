@@ -1,6 +1,8 @@
 // Mirrors viu_media/libs/provider/anime/allanime/constants.py. When AllAnime
 // rotates its client crypto, update both files together.
 
+// Stream "clock" links are still served from allanime.day.
+export const API_BASE_URL = 'allanime.day';
 export const API_GRAPHQL_REFERER = 'https://mkissa.to';
 export const API_GRAPHQL_ENDPOINT = 'https://api.mkissa.net/api';
 export const API_BOOTSTRAP_ENDPOINT = 'https://api.mkissa.net/client-crypto/v1/bootstrap';
@@ -26,6 +28,8 @@ export const CLIENT_MASK_HEX = 'fcccd2c105d4873d88ce94359bb5e458a972bde6ac930693
 export const CLIENT_EPOCH_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const MP4_SERVER_JUICY_STREAM_REGEX = /video\/mp4",src:"(https?:\/\/.*\/video\.mp4)"/;
+// https://repackager.wixmp.com/<host and path>/,1080p,720p,480p,/mp4/file.mp4.urlset/master.m3u8
+export const WIXMP_REPACKAGER_REGEX = /^https:\/\/repackager\.wixmp\.com\/(.+?)\/,([^/]*),\/mp4\/file\.mp4\.urlset\/master\.m3u8/;
 
 export const SEARCH_GQL = `query (
   $search: SearchInput

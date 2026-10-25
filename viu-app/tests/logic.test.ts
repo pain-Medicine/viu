@@ -10,7 +10,7 @@ import { airedEpisodes, type Media, tokenFrom } from '../src/api/anilist';
 import { base64ToBytes, bytesToBase64, bytesToUtf8 } from '../src/lib/base64';
 import { CLIENT_EPOCH_MS } from '../src/providers/allanime/constants';
 import { AllAnimeKeys } from '../src/providers/allanime/keys';
-import { AllAnimeProvider } from '../src/providers/allanime/provider';
+import { AllAnimeProvider, episodeQueryError, wixmpLinks } from '../src/providers/allanime/provider';
 import { applyNetwork, BLOCKED, type NetworkSettings } from '../src/state/networkModes';
 import { episodeProgress, type HistoryEntry, upNext } from '../src/state/progress';
 
@@ -109,12 +109,45 @@ describe('AllAnimeProvider keys', () => {
     const provider = new AllAnimeProvider(fetchFn);
     const week = 2900;
     mock.method(Date, 'now', () => week * CLIENT_EPOCH_MS + 1000);
-    await provider.episodeStreams('id', '1', 'sub');
-    await provider.episodeStreams('id', '2', 'sub');
+    await provider.episodeStreams('id', '1', 'sub').catch(() => {});
+    await provider.episodeStreams('id', '2', 'sub').catch(() => {});
     assert.equal(bootstraps, 1);
     mock.method(Date, 'now', () => (week + 1) * CLIENT_EPOCH_MS + 1000);
-    await provider.episodeStreams('id', '3', 'sub');
+    await provider.episodeStreams('id', '3', 'sub').catch(() => {});
     assert.equal(bootstraps, 2);
+  });
+});
+
+describe('AllAnime streams', () => {
+  it('turns a wixmp playlist into one mp4 per quality, playlist last', () => {
+    const hls = 'https://repackager.wixmp.com/video.wixstatic.com/video/abc_123/,1080p,720p,/mp4/file.mp4.urlset/master.m3u8';
+    assert.deepEqual(wixmpLinks(hls), [
+      { url: 'https://video.wixstatic.com/video/abc_123/1080p/mp4/file.mp4', quality: '1080' },
+      { url: 'https://video.wixstatic.com/video/abc_123/720p/mp4/file.mp4', quality: '720' },
+      { url: hls, quality: 'auto' },
+    ]);
+    assert.deepEqual(wixmpLinks('https://example.com/a.mp4'), [{ url: 'https://example.com/a.mp4', quality: '1080' }]);
+  });
+  it('says when the api is rate limiting or has no episode', () => {
+    assert.match(episodeQueryError([{ message: 'Too many requests, please try again in 4 seconds.' }]).message, /rate limiting.*4 seconds/);
+    assert.match(episodeQueryError(undefined).message, /no data for this episode/);
+  });
+  it('reads the Default source from allanime.day and names unsupported servers', async () => {
+    const urls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      urls.push(url);
+      if (url.includes('bootstrap')) return new Response(JSON.stringify({ epoch: 1, partB: bytesToBase64(new Uint8Array(32)) }));
+      if (url.includes('clock.json')) return new Response(JSON.stringify({ links: [{ link: 'https://x.example/v.mp4' }] }));
+      const sourceUrls = url.includes('%22episodeString%22%3A%221%22')
+        ? [{ sourceName: 'Default', sourceUrl: '/apivtwo/clock?id=ab' }, { sourceName: 'Ok', sourceUrl: 'https://ok.ru/x' }]
+        : [{ sourceName: 'Ok', sourceUrl: 'https://ok.ru/x' }];
+      return new Response(JSON.stringify({ data: { episode: { sourceUrls } } }));
+    }) as typeof fetch;
+    const provider = new AllAnimeProvider(fetchFn);
+    const servers = await provider.episodeStreams('id', '1', 'sub');
+    assert.ok(urls.includes('https://allanime.day/apivtwo/clock.json?id=ab'));
+    assert.deepEqual(servers.map((s) => [s.name, s.links, s.headers]), [['wixmp', [{ url: 'https://x.example/v.mp4', quality: '1080' }], {}]]);
+    await assert.rejects(provider.episodeStreams('id', '2', 'sub'), /servers \(Ok\)/);
   });
 });
 

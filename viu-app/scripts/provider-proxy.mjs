@@ -18,7 +18,7 @@ import { pathToFileURL } from 'node:url';
 export const DEFAULT_PORT = 8787;
 
 // Only the provider's hosts, so this can't be used to reach anything else.
-const ALLOWED_HOSTS = ['api.mkissa.net', 'mp4upload.com'];
+const ALLOWED_HOSTS = ['api.mkissa.net', 'allanime.day', 'mp4upload.com'];
 
 export function isAllowed(target) {
   let url;

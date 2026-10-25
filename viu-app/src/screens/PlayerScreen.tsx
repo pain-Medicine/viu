@@ -5,12 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as RN from 'react-native';
 import { ActivityIndicator, Animated, Easing, type HostInstance, Platform, Pressable, StyleSheet, View } from 'react-native';
 
-import { displayTitle, getMedia } from '../api/anilist';
+import { displayTitle, getMedia, type Media } from '../api/anilist';
 import { SkipInterval, skipTimes } from '../api/aniskip';
-import { useAsync } from '../lib/useAsync';
+import { type AsyncState, useAsync } from '../lib/useAsync';
 import { useReduceMotion } from '../lib/useReduceMotion';
 import { useNav, useScreenActive } from '../nav/navigation';
-import { findShow, playableUrl, provider, showKey, TranslationType } from '../providers';
+import { findShow, playableUrl, provider, type ProviderAnime, showKey, TranslationType } from '../providers';
 import { isWatched, useHistory } from '../state/history';
 import { useProgressSync } from '../state/mylist';
 import { useSettings } from '../state/settings';
@@ -45,6 +45,7 @@ const useTVEventHandler: (handler: (e: TVRemoteEvent) => void) => void =
 
 interface Option {
   label: string;
+  uri: string;
   source: VideoSource;
 }
 
@@ -54,14 +55,13 @@ interface Option {
 // - controls: everything, with focus on Play.
 type Overlay = 'hidden' | 'seeking' | 'controls';
 
-export function PlayerScreen({ mediaId, episode, translation }: { mediaId: number; episode: string; translation: TranslationType }) {
-  const { theme, settings } = useSettings();
-  const c = theme.colors;
-  const nav = useNav();
-  const active = useScreenActive();
-  const history = useHistory();
-  const syncProgress = useProgressSync();
+interface PlayerProps {
+  mediaId: number;
+  episode: string;
+  translation: TranslationType;
+}
 
+export function PlayerScreen({ mediaId, episode, translation }: PlayerProps) {
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
   // Usually already cached by the details page.
   const show = useAsync(media.data ? showKey(mediaId, translation) : null, () => findShow(media.data!, translation));
@@ -69,14 +69,57 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   const streams = useAsync(showId ? `streams:${showId}:${episode}:${translation}` : null, async () => {
     const servers = await provider.episodeStreams(showId!, episode, translation);
     const options: Option[] = servers.flatMap((s) =>
-      s.links.map((l) => ({ label: `${l.quality} · ${s.name}`, source: { uri: playableUrl(l.url, s.headers), headers: s.headers } })),
+      s.links.map((l) => {
+        const uri = playableUrl(l.url, s.headers);
+        return { label: `${l.quality} · ${s.name}`, uri, source: { uri, headers: s.headers } };
+      }),
     );
     if (!options.length) throw new Error('AllAnime has no playable stream for this episode yet.');
     return { options };
   });
-
   const [optionIndex, setOptionIndex] = useState(0);
+  const [playError, setPlayError] = useState<Error>();
   const option = streams.data?.options[optionIndex];
+
+  // Each stream gets a player made with it, rather than a source swapped
+  // under a <video> that's already loading (which the browser aborts).
+  return (
+    <Playback
+      key={option ? `${optionIndex}:${option.uri}` : 'none'}
+      {...{ mediaId, episode, translation, media, show, streams, option, optionIndex, setOptionIndex, playError, setPlayError }}
+    />
+  );
+}
+
+function Playback({
+  mediaId,
+  episode,
+  translation,
+  media,
+  show,
+  streams,
+  option,
+  optionIndex,
+  setOptionIndex,
+  playError,
+  setPlayError,
+}: PlayerProps & {
+  media: AsyncState<Media>;
+  show: AsyncState<ProviderAnime | null>;
+  streams: AsyncState<{ options: Option[] }>;
+  option: Option | undefined;
+  optionIndex: number;
+  setOptionIndex: (update: number | ((i: number) => number)) => void;
+  playError: Error | undefined;
+  setPlayError: (error: Error | undefined) => void;
+}) {
+  const { theme, settings } = useSettings();
+  const c = theme.colors;
+  const nav = useNav();
+  const active = useScreenActive();
+  const history = useHistory();
+  const syncProgress = useProgressSync();
+
   const player = useVideoPlayer(option?.source ?? null, (p) => {
     p.timeUpdateEventInterval = 1;
   });
@@ -85,7 +128,12 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   const last = history.get(mediaId);
   const saved = last?.episodes?.[episode] ?? (last?.episode === episode ? last : undefined);
   const resumeAt = useRef(saved && saved.duration - saved.position > 30 ? saved.position : 0);
-  useEventListener(player, 'sourceLoad', () => {
+  // The web player never sends sourceLoad, so playback starts the first time
+  // the stream is ready instead.
+  const started = useRef(false);
+  useEventListener(player, 'statusChange', ({ status }) => {
+    if (status !== 'readyToPlay' || started.current) return;
+    started.current = true;
     if (resumeAt.current > 0) player.currentTime = resumeAt.current;
     resumeAt.current = 0;
     player.play();
@@ -98,7 +146,6 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   const buffering = status === 'loading';
   // A stream that won't load (expired, refused) moves on to the next server,
   // and shows an error once none is left.
-  const [playError, setPlayError] = useState<Error>();
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (status !== 'error') return;
     if (optionIndex < (streams.data?.options.length ?? 0) - 1) setOptionIndex(optionIndex + 1);

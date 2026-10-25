@@ -26,12 +26,13 @@ function webProxyFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Re
   return fetch(`${PROXY}?url=${encodeURIComponent(target)}`, { ...init, headers });
 }
 
-// A browser's <video> can't send headers, so on web the video goes through the
-// proxy too, with the Referer it needs passed as a query parameter.
+// A browser's <video> can't send headers, so on web a video that needs a
+// Referer goes through the proxy too, with the Referer passed as a query
+// parameter. One that needs none (wixmp, which allows any origin) loads directly.
 export function playableUrl(url: string, headers: Record<string, string>): string {
-  if (Platform.OS !== 'web' || !PROXY) return url;
   const referer = headers.Referer ?? headers.referer;
-  return `${PROXY}?url=${encodeURIComponent(url)}${referer ? `&referer=${encodeURIComponent(referer)}` : ''}`;
+  if (Platform.OS !== 'web' || !PROXY || !referer) return url;
+  return `${PROXY}?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(referer)}`;
 }
 
 export const provider: AnimeProvider = new AllAnimeProvider(

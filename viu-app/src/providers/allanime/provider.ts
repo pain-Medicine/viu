@@ -1,11 +1,11 @@
 // Port of viu_media/libs/provider/anime/allanime/provider.py.
 //
-// Only the mp4upload source is extracted, matching the Python provider: as of
-// 2026-10 AllAnime's own sources are gone and the remaining embeds (Ok, Fm-Hls,
-// Sw, ...) aren't supported yet.
-import { AnimeProvider, ProviderAnime, ProviderSearchResult, StreamServer, TranslationType } from '../types';
+// Two sources are extracted: AllAnime's own "Default" (wixmp) and mp4upload's
+// "Mp4". The other embeds (Ok, Ak, Ss-Hls, Fm-Hls, Sw, ...) aren't supported yet.
+import { AnimeProvider, ProviderAnime, ProviderSearchResult, StreamLink, StreamServer, TranslationType } from '../types';
 import {
   ANIME_GQL,
+  API_BASE_URL,
   API_GRAPHQL_ENDPOINT,
   API_GRAPHQL_HEADERS,
   CLIENT_BUILD_ID,
@@ -15,6 +15,7 @@ import {
   MP4_SERVER_JUICY_STREAM_REGEX,
   SEARCH_GQL,
   USER_AGENT,
+  WIXMP_REPACKAGER_REGEX,
 } from './constants';
 import { HttpError, reach } from '../../lib/errors';
 import { AllAnimeKeys } from './keys';
@@ -38,6 +39,31 @@ function oneDigitSymmetricXor(password: number, hex: string): string {
     out += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ password);
   }
   return out;
+}
+
+// wixmp hands out an HLS playlist that bundles every quality, which a browser's
+// <video> mostly can't play. The same files are served as plain mp4s per
+// quality, so those come first and the playlist stays as the last resort.
+export function wixmpLinks(link: string): StreamLink[] {
+  const match = WIXMP_REPACKAGER_REGEX.exec(link);
+  if (!match) return [{ url: link, quality: '1080' }];
+  const [, path, list] = match;
+  const mp4s = list
+    .split(',')
+    .filter(Boolean)
+    .map((res) => ({ url: `https://${path}/${res}/mp4/file.mp4`, quality: res.replace(/p$/, '') }));
+  return [...mp4s, { url: link, quality: 'auto' }];
+}
+
+// The api answers a throttled or missing episode with `episode: null`, and
+// says why in `errors`.
+export function episodeQueryError(errors: { message?: string }[] | undefined): Error {
+  const message = (errors ?? []).map((e) => e.message).filter(Boolean).join(' ');
+  if (/too many requests/i.test(message)) {
+    const wait = /try again in (\d+) seconds?/i.exec(message)?.[1];
+    return new Error(`AllAnime is rate limiting requests. Try again in ${wait ? `${wait} seconds` : 'a minute'}.`);
+  }
+  return new Error(`AllAnime returned no data for this episode. Try again.${message ? ` (${message})` : ''}`);
 }
 
 export class AllAnimeProvider implements AnimeProvider {
@@ -128,11 +154,13 @@ export class AllAnimeProvider implements AnimeProvider {
     if (!response.ok) {
       throw new Error(`Episode query failed (${response.status}): ${(await response.text()).slice(0, 200)}`);
     }
-    let data = ((await response.json()) as { data?: Record<string, unknown> }).data ?? {};
+    const json = (await response.json()) as { data?: Record<string, unknown>; errors?: { message?: string }[] };
+    let data = json.data ?? {};
     if (typeof data.tobeparsed === 'string') {
       data = keys.decryptTobeparsed<Record<string, unknown>>(data.tobeparsed);
     }
-    const ep = ((data.episode as AllAnimeEpisode | undefined) ?? (data as AllAnimeEpisode)) || {};
+    const ep = 'episode' in data ? (data.episode as AllAnimeEpisode | null) : (data as AllAnimeEpisode);
+    if (!ep) throw episodeQueryError(json.errors);
     const servers: StreamServer[] = [];
     for (const source of ep.sourceUrls ?? []) {
       try {
@@ -142,6 +170,14 @@ export class AllAnimeProvider implements AnimeProvider {
         // One broken embed shouldn't hide the others.
       }
     }
+    if (!servers.length) {
+      const names = (ep.sourceUrls ?? []).map((s) => s.sourceName).join(', ');
+      throw new Error(
+        names
+          ? `AllAnime has no playable stream for this episode yet. Its servers (${names}) aren’t supported or didn’t answer.`
+          : 'AllAnime has no playable stream for this episode yet.',
+      );
+    }
     return servers;
   }
 
@@ -149,6 +185,7 @@ export class AllAnimeProvider implements AnimeProvider {
     let url = source.sourceUrl;
     if (!url) return null;
     if (url.startsWith('--')) url = oneDigitSymmetricXor(56, url.slice(2));
+    if (source.sourceName === 'Default') return this.extractDefault(url, episode);
     if (source.sourceName !== 'Mp4') return null;
 
     const response = await this.fetchFn(url, { headers: { 'User-Agent': USER_AGENT } });
@@ -160,6 +197,24 @@ export class AllAnimeProvider implements AnimeProvider {
       name: 'mp4upload',
       links: [{ url: match[1], quality: '1080' }],
       headers: { Referer: 'https://www.mp4upload.com/', 'User-Agent': USER_AGENT },
+      episodeTitle: episode.notes ?? null,
+    };
+  }
+
+  // AllAnime's own source, a relative "/apivtwo/clock?id=..." link whose json
+  // twin lists the wixmp streams.
+  private async extractDefault(url: string, episode: AllAnimeEpisode): Promise<StreamServer | null> {
+    const response = await this.fetchFn(`https://${API_BASE_URL}${url.replace('clock', 'clock.json')}`, {
+      headers: { 'User-Agent': USER_AGENT },
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as { links?: { link: string }[]; Referer?: string };
+    const links = (json.links ?? []).flatMap((l) => wixmpLinks(l.link));
+    if (!links.length) return null;
+    return {
+      name: 'wixmp',
+      links,
+      headers: json.Referer ? { Referer: json.Referer } : {},
       episodeTitle: episode.notes ?? null,
     };
   }
