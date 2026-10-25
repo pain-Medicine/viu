@@ -129,6 +129,17 @@ describe('AllAnime streams', () => {
     ]);
     assert.deepEqual(wixmpLinks('https://example.com/a.mp4'), [{ url: 'https://example.com/a.mp4', quality: '1080' }]);
   });
+  it('searches with the terminal\'s defaults', async () => {
+    let body: { variables: { search: Record<string, unknown>; limit: number; countryOrigin?: string } } | undefined;
+    const fetchFn = (async (_url: string, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ data: { shows: { edges: [] } } }));
+    }) as typeof fetch;
+    await new AllAnimeProvider(fetchFn).search('one piece', 'sub');
+    assert.deepEqual(body?.variables.search, { allowAdult: true, allowUnknown: true, query: 'one piece' });
+    assert.equal(body?.variables.limit, 20);
+    assert.equal(body?.variables.countryOrigin, undefined);
+  });
   it('says when the api is rate limiting or has no episode', () => {
     assert.match(episodeQueryError([{ message: 'Too many requests, please try again in 4 seconds.' }]).message, /rate limiting.*4 seconds/);
     assert.match(episodeQueryError(undefined).message, /no data for this episode/);

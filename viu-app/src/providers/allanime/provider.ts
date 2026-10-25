@@ -108,11 +108,13 @@ export class AllAnimeProvider implements AnimeProvider {
     const data = await this.graphql<{
       shows: { edges: { _id: string; name: string; availableEpisodes: { sub?: number; dub?: number } }[] };
     }>(SEARCH_GQL, {
-      search: { allowAdult: false, allowUnknown: false, query },
-      limit: 40,
+      // The terminal's SearchParams defaults (libs/provider/anime/params.py).
+      // Results only feed the matcher, so adult and unknown entries are never
+      // listed in the app, but leaving them out can hide the right show.
+      search: { allowAdult: true, allowUnknown: true, query },
+      limit: 20,
       page: 1,
       translationType: translation,
-      countryOrigin: 'ALL',
     });
     return data.shows.edges.map((edge) => ({
       id: edge._id,
