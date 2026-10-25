@@ -11,6 +11,7 @@ import { type AsyncState, useAsync } from '../lib/useAsync';
 import { useReduceMotion } from '../lib/useReduceMotion';
 import { useNav, useScreenActive } from '../nav/navigation';
 import { type EpisodeStreams, findShow, playableUrl, provider, type ProviderAnime, showKey, TranslationType } from '../providers';
+import { attachHls, needsHlsJs } from '../lib/hls';
 import { preferQuality } from '../providers/quality';
 import { useAccount } from '../state/account';
 import { isWatched, useHistory } from '../state/history';
@@ -151,9 +152,21 @@ function Playback({
   const syncProgress = useProgressSync();
   const { account } = useAccount();
 
-  const player = useVideoPlayer(option?.source ?? null, (p) => {
+  // HLS the browser can't play itself goes through hls.js, so the player
+  // gets no source of its own and hls.js feeds its <video>.
+  const viaHlsJs = !!option && needsHlsJs(option.uri);
+  const player = useVideoPlayer(viaHlsJs ? null : (option?.source ?? null), (p) => {
     p.timeUpdateEventInterval = 1;
   });
+  const videoBox = useRef<HostInstance>(null);
+  useEffect(() => {
+    if (!viaHlsJs || !option) return;
+    const video = (videoBox.current as unknown as { querySelector?: (s: string) => HTMLVideoElement | null } | null)?.querySelector?.('video');
+    if (!video) return;
+    return attachHls(video, option.uri, (message) => advance(message, null));
+    // A new stream is a new Playback, so this runs once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Picks up where the last session of this episode stopped, or where the
   // previous stream was when switching servers.
@@ -439,7 +452,9 @@ function Playback({
     // Black behind the video, for letterboxing, in every theme.
     <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]}>
       {option ? (
-        <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+        <View ref={videoBox} style={StyleSheet.absoluteFill}>
+          <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+        </View>
       ) : (
         m && (
           <Art

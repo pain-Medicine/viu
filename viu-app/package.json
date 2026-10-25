@@ -20,6 +20,7 @@
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.6",
     "expo-video": "~58.0.12",
+    "hls.js": "1.6.19",
     "qrcode-generator": "^2.0.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
