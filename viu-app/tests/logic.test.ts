@@ -12,6 +12,7 @@ import { CLIENT_EPOCH_MS } from '../src/providers/allanime/constants';
 import { AllAnimeKeys } from '../src/providers/allanime/keys';
 import { AllAnimeProvider, episodeQueryError, RateLimitError, wixmpLinks } from '../src/providers/allanime/provider';
 import { preferQuality } from '../src/providers/quality';
+import { isSafeUrl, safeServer, SERVER_HOSTS } from '../src/providers/safety';
 import { AnimeUnityProvider, isVixcloudUrl, vixcloudServer } from '../src/providers/animeunity/provider';
 import { findBestMatch, ratio, searchQueries, setUserTitles, tokenSetRatio } from '../src/providers/match';
 import { applyNetwork, BLOCKED, type NetworkSettings } from '../src/state/networkModes';
@@ -153,7 +154,7 @@ describe('AllAnime streams', () => {
     const fetchFn = (async (url: string) => {
       urls.push(url);
       if (url.includes('bootstrap')) return new Response(JSON.stringify({ epoch: 1, partB: bytesToBase64(new Uint8Array(32)) }));
-      if (url.includes('clock.json')) return new Response(JSON.stringify({ links: [{ link: 'https://x.example/v.mp4' }] }));
+      if (url.includes('clock.json')) return new Response(JSON.stringify({ links: [{ link: 'https://video.wixstatic.com/v.mp4' }] }));
       const sourceUrls = url.includes('%22episodeString%22%3A%221%22')
         ? [{ sourceName: 'Default', sourceUrl: '/apivtwo/clock?id=ab' }, { sourceName: 'Ok', sourceUrl: 'https://ok.ru/x' }]
         : [{ sourceName: 'Ok', sourceUrl: 'https://ok.ru/x' }];
@@ -162,7 +163,7 @@ describe('AllAnime streams', () => {
     const provider = new AllAnimeProvider(fetchFn);
     const { servers } = await provider.episodeStreams('id', '1', 'sub');
     assert.ok(urls.includes('https://allanime.day/apivtwo/clock.json?id=ab'));
-    assert.deepEqual(servers.map((s) => [s.name, s.links, s.headers]), [['wixmp', [{ url: 'https://x.example/v.mp4', quality: '1080' }], {}]]);
+    assert.deepEqual(servers.map((s) => [s.name, s.links, s.headers]), [['wixmp', [{ url: 'https://video.wixstatic.com/v.mp4', quality: '1080' }], {}]]);
     await assert.rejects(provider.episodeStreams('id', '2', 'sub'), /servers \(Ok\)/);
   });
 });
@@ -176,8 +177,8 @@ describe('AllAnime servers', () => {
       urls.push(url);
       if (url.includes('bootstrap')) return new Response(JSON.stringify({ epoch: 1, partB: bytesToBase64(new Uint8Array(32)) }));
       if (url.includes('clock.json?id=dead')) return new Response('error', { status: 500 });
-      if (url.includes('clock.json?id=urls')) return new Response(JSON.stringify({ links: ['https://dropbox.example/v.mp4'] }));
-      if (url.includes('clock.json')) return new Response(JSON.stringify({ links: [{ link: 'https://x.example/v.mp4', resolutionStr: 'Mp4' }] }));
+      if (url.includes('clock.json?id=0e15')) return new Response(JSON.stringify({ links: ['https://dropbox.example/v.mp4'] }));
+      if (url.includes('clock.json')) return new Response(JSON.stringify({ links: [{ link: 'https://video.wixstatic.com/v.mp4', resolutionStr: 'Mp4' }] }));
       if (url.includes('mp4upload')) return new Response('player.src({type:"video/mp4",src:"https://a1.mp4upload.com:183/d/x/video.mp4"})');
       return new Response(JSON.stringify(episodeReply ?? { data: { episode: { sourceUrls: sources } } }));
     }) as typeof fetch;
@@ -210,7 +211,7 @@ describe('AllAnime servers', () => {
   });
 
   it('reads the terminal\'s other AllAnime servers', async () => {
-    const { provider } = fake([{ sourceName: 'Sak', sourceUrl: clock('urls') }]);
+    const { provider } = fake([{ sourceName: 'Sak', sourceUrl: clock('0e15') }]);
     const { servers } = await provider.episodeStreams('id', '1', 'sub');
     assert.deepEqual(servers.map((s) => [s.name, s.links[0].url]), [['dropbox', 'https://dropbox.example/v.mp4']]);
     for (const [sourceName, name] of [['S-mp4', 'sharepoint'], ['Luf-Mp4', 'gogoanime'], ['Kir', 'weTransfer']]) {
@@ -235,6 +236,35 @@ describe('AllAnime servers', () => {
     const links = [{ url: 'a', quality: '1080' }, { url: 'b', quality: '720' }, { url: 'c', quality: 'auto' }];
     assert.deepEqual(preferQuality(links, '720').map((l) => l.url), ['b', 'a', 'c']);
     assert.deepEqual(preferQuality(links, '360').map((l) => l.url), ['a', 'b', 'c']);
+  });
+});
+
+describe('provider safety', () => {
+  it('only lets https, public, expected hosts through', () => {
+    assert.ok(isSafeUrl('https://video.wixstatic.com/v.mp4', SERVER_HOSTS.wixmp));
+    assert.ok(!isSafeUrl('https://evil.example/v.mp4', SERVER_HOSTS.wixmp));
+    assert.ok(!isSafeUrl('http://video.wixstatic.com/v.mp4'));
+    for (const bad of ['https://192.168.1.1/x', 'https://10.0.0.2/x', 'https://127.0.0.1/x', 'https://localhost/x', 'https://router/x', 'https://[::1]/x', 'https://nas.local/x', 'file:///etc/passwd', 'javascript:alert(1)', 'https://user:pw@cdn.example/x']) {
+      assert.ok(!isSafeUrl(bad), bad);
+    }
+    assert.ok(isSafeUrl('https://cdn.example.net/x.mp4'));
+    const server = { name: 'Yt', links: [{ url: 'https://tools.fast4speed.rsvp/a.mp4', quality: '1080' }, { url: 'https://other.example/b.mp4', quality: '720' }], headers: {}, episodeTitle: null };
+    assert.deepEqual(safeServer(server)?.links.map((l) => l.url), ['https://tools.fast4speed.rsvp/a.mp4']);
+    assert.equal(safeServer({ ...server, links: [server.links[1]] }), null);
+  });
+
+  it('never follows a clock path or embed somewhere else', async () => {
+    const urls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      urls.push(url);
+      if (url.includes('bootstrap')) return new Response(JSON.stringify({ epoch: 1, partB: bytesToBase64(new Uint8Array(32)) }));
+      return new Response(JSON.stringify({ data: { episode: { sourceUrls: [
+        { sourceName: 'Default', sourceUrl: '@evil.example/apivtwo/clock?id=ab' },
+        { sourceName: 'Mp4', sourceUrl: 'http://192.168.1.1/embed.html' },
+      ] } } }));
+    }) as typeof fetch;
+    await assert.rejects(new AllAnimeProvider(fetchFn).episodeStreams('id', '1', 'sub'), /no playable stream/);
+    assert.ok(urls.every((u) => !u.includes('evil.example') && !u.includes('192.168')), urls.join(' '));
   });
 });
 

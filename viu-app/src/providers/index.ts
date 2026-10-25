@@ -5,6 +5,7 @@ import { type Media } from '../api/anilist';
 import { AllAnimeProvider } from './allanime/provider';
 import { AnimeUnityProvider } from './animeunity/provider';
 import { findBestMatch, getUserTitles, searchQueries, setUserTitles } from './match';
+import { withTimeout } from './safety';
 import { AnimeProvider, ProviderAnime, ProviderId, ProviderSearchResult, ProviderUnavailableError, TranslationType } from './types';
 
 export * from './types';
@@ -38,7 +39,10 @@ export function playableUrl(url: string, headers: Record<string, string>): strin
   return `${PROXY}?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(referer)}`;
 }
 
-const providerFetch: typeof fetch = Platform.OS === 'web' ? webProxyFetch : (...args) => fetch(...args);
+// Provider requests carry no cookies or credentials of ours, and time out.
+const providerFetch = withTimeout(
+  Platform.OS === 'web' ? webProxyFetch : (input, init) => fetch(input, { ...init, credentials: 'omit' }),
+);
 
 // The terminal's general.provider choices that work today. AllAnime is the
 // one with English subtitles and dubs; AnimeUnity's are Italian.

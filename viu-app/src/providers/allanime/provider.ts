@@ -27,6 +27,7 @@ import {
   WIXMP_REPACKAGER_REGEX,
 } from './constants';
 import { HttpError, reach } from '../../lib/errors';
+import { isSafeUrl, safeServer } from '../safety';
 import { AllAnimeKeys } from './keys';
 
 interface AllAnimeSource {
@@ -76,6 +77,7 @@ export const SOURCE_SERVERS: Record<string, string> = {
   Mp4: 'mp4-upload',
 };
 
+const CLOCK_PATH = /^\/apivtwo\/clock\?id=[0-9a-f]+$/i;
 // "/apivtwo/clock?id=..." becomes "https://allanime.day/apivtwo/clock.json?id=...".
 export const clockJsonUrl = (url: string) => `https://${API_BASE_URL}${url.replace('clock', 'clock.json')}`;
 
@@ -227,7 +229,7 @@ export class AllAnimeProvider implements AnimeProvider {
       while (queue.length) {
         const source = queue.shift()!;
         try {
-          const server = await this.extract(source, ep);
+          const server = safeServer(await this.extract(source, ep));
           if (server) {
             servers.push(server);
             return server;
@@ -267,6 +269,7 @@ export class AllAnimeProvider implements AnimeProvider {
 
   // mp4_upload.py
   private async extractMp4(url: string, episode: AllAnimeEpisode): Promise<StreamServer | null> {
+    if (!isSafeUrl(url, ['mp4upload.com'])) return null;
     const response = await this.fetchFn(url, { headers: { 'User-Agent': USER_AGENT } });
     if (!response.ok) return null;
     const html = (await response.text()).replace(/ /g, '').replace(/\n/g, '');
@@ -284,6 +287,9 @@ export class AllAnimeProvider implements AnimeProvider {
   // we_transfer.py): a relative "/apivtwo/clock?id=..." link whose json twin on
   // allanime.day lists the streams, as objects or as bare urls.
   private async extractClock(name: string, url: string, episode: AllAnimeEpisode): Promise<StreamServer | null> {
+    // Only AllAnime's own clock path: anything else (say "@host/...") could
+    // turn the request into one to another host.
+    if (!CLOCK_PATH.test(url)) return null;
     const response = await this.fetchFn(clockJsonUrl(url), { headers: { 'User-Agent': USER_AGENT } });
     if (!response.ok) return null;
     const json = (await response.json()) as { links?: ({ link: string } | string)[]; Referer?: string };

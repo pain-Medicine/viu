@@ -5,6 +5,7 @@
 // from vixcloud, read from its player page with regexes only: nothing it
 // sends is ever run.
 import { HttpError, reach } from '../../lib/errors';
+import { safeServer } from '../safety';
 import type { AnimeProvider, EpisodeStreams, ProviderAnime, ProviderSearchResult, StreamServer, TranslationType } from '../types';
 
 // animeunity.so, the terminal's domain, no longer resolves; animeunity.to
@@ -196,7 +197,7 @@ export class AnimeUnityProvider implements AnimeProvider {
     const page = await this.request(embed, { headers: { Referer: `${ANIMEUNITY_BASE}/` } });
     if (!page.ok) throw new HttpError('vixcloud', page.status);
     const title = `${recordTitle(this.records.get(id) ?? { id: 0, dub: 0 })} - Ep ${episode}`;
-    const server = vixcloudServer(await page.text(), title);
+    const server = safeServer(vixcloudServer(await page.text(), title));
     if (!server) throw new Error('AnimeUnity has no playable stream for this episode yet.');
     return { servers: [server], sources: ['vixcloud'], more: async () => null };
   }
