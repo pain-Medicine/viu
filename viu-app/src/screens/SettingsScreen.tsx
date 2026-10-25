@@ -126,7 +126,9 @@ function NetworkSection() {
   if (!supported) {
     return (
       <Section label="Network" index="04">
-        {note('In the browser, your computer’s own network settings apply. Proxy and VPN are in the Android TV app.')}
+        <Text variant="note" color={c.textMuted}>
+          In the browser, your computer’s own network settings apply. Proxy and VPN are in the Android TV app.
+        </Text>
       </Section>
     );
   }

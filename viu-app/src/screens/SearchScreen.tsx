@@ -14,7 +14,7 @@ import { Panel } from '../ui/Panel';
 import { gridColumns, gridGap, useCardSize, useStage } from '../ui/Stage';
 import { Text, textStyle } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
-import { formatLabel } from './format';
+import { countLabel, formatLabel } from './format';
 
 const KEYS = 'abcdefghijklmnopqrstuvwxyz1234567890'.split('');
 const CARD_W = 218;
@@ -139,7 +139,7 @@ export function SearchScreen() {
         />
       )}
       <Text variant="label" color={c.textMuted}>
-        {results.loading ? 'Searching…' : debounced ? `${items.length} results` : 'Trending now'}
+        {results.loading ? 'Searching…' : debounced ? countLabel(items.length, 'result') : 'Trending now'}
       </Text>
     </Panel>
   );
@@ -152,7 +152,7 @@ export function SearchScreen() {
           autoFocus={false}
           error={results.error}
           service="AniList"
-          title="Search didn't work"
+          title="Search didn’t work"
           onRetry={results.retry}
         />
       )}

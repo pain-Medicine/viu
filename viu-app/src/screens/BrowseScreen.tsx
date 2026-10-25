@@ -252,7 +252,7 @@ function ResultsPage({
         autoFocus={page === 1}
         error={result.error}
         service="AniList"
-        title="Couldn't load titles"
+        title="Couldn’t load titles"
         onRetry={result.retry}
         style={{ width: '100%', paddingVertical: 8 }}
       />

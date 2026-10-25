@@ -15,11 +15,12 @@ import { DotMatrix, FrameMarks, Hazard } from '../ui/Decor';
 import { ErrorState } from '../ui/ErrorState';
 import { Focusable } from '../ui/Focusable';
 import { Icon } from '../ui/Icon';
+import { MetaLine } from '../ui/MetaLine';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 import { useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
-import { metaLine, minutesLeft } from './format';
+import { countLabel, metaParts, minutesLeft } from './format';
 
 // One episode row plus the gap between rows, full size and compact.
 const EP_STEP = 124;
@@ -33,12 +34,13 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
   const entry = history.get(mediaId);
   const stage = useStage();
   // Less room than the TV design: the cover moves beside the title, the
-  // actions come before the synopsis, and the column scrolls.
+  // actions come before the synopsis. The column scrolls when it runs long.
   const compact = stage.narrow || stage.short;
   const colW = compact ? Math.round(Math.min(760, stage.width * 0.44)) : 760;
   const panelLeft = 80 + colW + (compact ? 48 : 80);
   const panelInset = stage.short ? 24 : compact ? 40 : 64;
   const epStep = compact ? EP_STEP_COMPACT : EP_STEP;
+  const [listSpace, setListSpace] = useState(0);
 
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
   const membership = useListMembership(mediaId);
@@ -76,7 +78,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           <ErrorState
             error={media.error}
             service="AniList"
-            title="Couldn't load this title"
+            title="Couldn’t load this title"
             onRetry={media.retry}
             other={{ label: 'Back', onPress: nav.back }}
           />
@@ -117,13 +119,9 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
       {displayTitle(m)}
     </Text>
   );
-  const meta = (
-    <Text variant="label" color={c.textMuted}>
-      {metaLine(m, { episodes: true, status: true })}
-    </Text>
-  );
+  const meta = <MetaLine parts={metaParts(m, { episodes: true, status: true })} color={c.textMuted} />;
   const synopsis = (
-    <Text color={c.textOnArt} numberOfLines={compact ? undefined : 4}>
+    <Text color={c.textOnArt} numberOfLines={compact ? undefined : 3}>
       {plainDescription(m)}
     </Text>
   );
@@ -146,7 +144,6 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           gap: compact ? 18 : 22,
         }}
         showsVerticalScrollIndicator={false}
-        scrollEnabled={compact}
       >
         <Focusable
           onPress={nav.back}
@@ -211,7 +208,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
         )}
         {!membership.canToggle && !membership.loading && (
           <Text variant="note" color={c.textMuted}>
-            Change this title's status on AniList; removing it here would erase your progress.
+            Change this title’s status on AniList; removing it here would erase your progress.
           </Text>
         )}
         {compact && synopsis}
@@ -254,7 +251,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
             </Text>
             <Text
               color={c.featureMuted}
-            >{`AllAnime doesn't list this title in ${translation === 'dub' ? 'English dub' : 'subtitles'}. The ${otherLabel.toLowerCase()} may be there.`}</Text>
+            >{`AllAnime doesn’t list this title in ${translation === 'dub' ? 'English dub' : 'subtitles'}. The ${otherLabel.toLowerCase()} may be there.`}</Text>
           </View>
         )}
 
@@ -265,7 +262,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
               autoFocus={false}
               error={show.error}
               service="AllAnime"
-              title="Couldn't find streams"
+              title="Couldn’t find streams"
               onRetry={show.retry}
             />
           </View>
@@ -295,9 +292,11 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
         )}
 
         {showRows && (
+          // The list shows whole rows only, so the last one is never cut in half.
+          <View style={{ flex: 1 }} onLayout={(e) => setListSpace(e.nativeEvent.layout.height)}>
           <ScrollView
             ref={list}
-            style={{ flex: 1, marginHorizontal: -14 }}
+            style={{ height: listSpace ? Math.max(epStep, Math.floor((listSpace - 28 + 8) / epStep) * epStep - 8 + 28) : undefined, flexGrow: 0, marginHorizontal: -14 }}
             contentContainerStyle={{ gap: 8, padding: 14 }}
             showsVerticalScrollIndicator={false}
           >
@@ -318,10 +317,11 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
                   />
                 ))}
           </ScrollView>
+          </View>
         )}
 
-        <Text variant="meta" color={c.featureMuted}>
-          {status ?? (showRows ? `Streams from AllAnime  ·  mp4upload  ·  ${episodes.length} episodes` : 'Streams from AllAnime')}
+        <Text variant="note" color={c.featureMuted}>
+          {status ?? (showRows ? `Streams from AllAnime  ·  mp4upload  ·  ${countLabel(episodes.length, 'episode')}` : 'Streams from AllAnime')}
         </Text>
       </Panel>
     </View>

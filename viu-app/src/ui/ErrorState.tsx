@@ -36,7 +36,7 @@ export function ErrorState({ error, service, title, onRetry, other, autoFocus = 
   let { title: heading, body, detail } = explain(error, service, title, deviceKind());
   // A blocked VPN or proxy explains every failure at once.
   if (status.state === 'error') {
-    heading = "Viu's VPN or proxy isn't connected";
+    heading = "Viu’s VPN or proxy isn’t connected";
     body = 'Its traffic is blocked until it connects, so nothing leaks. Check it in Settings.';
     detail = status.message;
   }

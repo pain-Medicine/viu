@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 
+import { deviceKind } from '../lib/device';
 import { useNav } from '../nav/navigation';
 import { useTheme } from '../state/settings';
 import { Focusable } from './Focusable';
@@ -20,14 +21,18 @@ const ITEMS: { id: Exclude<Section, 'settings'>; label: string; icon: IconName }
 
 const ITEM_H = 60;
 
+const DEVICE_TAG = { TV: 'TV', phone: 'Phone', tablet: 'Tablet', browser: 'Web' } as const;
+
 export function TopNav({ active }: { active: Section }) {
   const theme = useTheme();
   const c = theme.colors;
   const nav = useNav();
   // Short of the full design width the labels stay and the icons go, which
   // keeps every item one tap or press away.
-  const { narrow } = useStage();
-  const side = narrow ? undefined : 300;
+  const { narrow, width } = useStage();
+  // The two ends share what the nav pill leaves, so on a canvas just wider
+  // than "narrow" the settings button still keeps the 80 px margin.
+  const side = narrow ? undefined : { flex: 1, flexBasis: 0, minWidth: 0 };
 
   return (
     <View
@@ -41,13 +46,13 @@ export function TopNav({ active }: { active: Section }) {
         justifyContent: 'space-between',
       }}
     >
-      <View style={{ width: side, flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
+      <View style={[side, { flexDirection: 'row', alignItems: 'baseline', gap: 12 }]}>
         <Text variant="logo" color={c.primary}>
           viu
         </Text>
-        {theme.decor.indexLabels && !narrow && (
-          <Text variant="meta" color={c.textMuted}>
-            Anime / TV
+        {theme.decor.indexLabels && width >= 1700 && (
+          <Text variant="meta" color={c.textMuted} numberOfLines={1}>
+            {`Anime / ${DEVICE_TAG[deviceKind()]}`}
           </Text>
         )}
       </View>
@@ -98,7 +103,7 @@ export function TopNav({ active }: { active: Section }) {
         })}
       </Panel>
 
-      <View style={{ width: side, flexDirection: 'row', justifyContent: 'flex-end' }}>
+      <View style={[side, { flexDirection: 'row', justifyContent: 'flex-end' }]}>
         <Focusable
           onPress={() => nav.goTo({ name: 'settings' })}
           radius={theme.shape.button}

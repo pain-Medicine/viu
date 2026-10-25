@@ -13,16 +13,23 @@ const FORMATS: Record<string, string> = {
 
 export const formatLabel = (m: Pick<Media, 'format'>) => (m.format ? FORMATS[m.format] ?? m.format : 'Anime');
 
-export function metaLine(m: Media, opts: { episodes?: boolean; status?: boolean; genres?: boolean } = {}): string {
+// "1 title", "20 titles".
+export const countLabel = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+type MetaOptions = { episodes?: boolean; status?: boolean; genres?: boolean };
+
+export function metaParts(m: Media, opts: MetaOptions = {}): string[] {
   const parts = [
     m.seasonYear?.toString(),
     formatLabel(m),
-    opts.episodes && m.episodes ? `${m.episodes} episodes` : undefined,
+    opts.episodes && m.episodes ? countLabel(m.episodes, 'episode') : undefined,
     m.studios.nodes[0]?.name,
     opts.status ? statusLabel(m) : opts.genres === false ? undefined : m.genres.slice(0, 3).join(', '),
   ];
-  return parts.filter(Boolean).join('  ·  ');
+  return parts.filter((p): p is string => !!p);
 }
+
+export const metaLine = (m: Media, opts: MetaOptions = {}): string => metaParts(m, opts).join('  ·  ');
 
 export function statusLabel(m: Media): string | undefined {
   switch (m.status) {

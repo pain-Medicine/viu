@@ -88,7 +88,7 @@ export function VpnImportScreen() {
             )}
             {error && (
               <Text variant="bodyBold" color={c.accent} style={{ marginLeft: 74 }}>
-                {`Couldn't open the import page: ${error}`}
+                {`Couldn’t open the import page: ${error}`}
               </Text>
             )}
           </View>

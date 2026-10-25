@@ -16,7 +16,8 @@ interface Props {
   // Landscape cards use the banner; posters use the cover.
   shape?: 'landscape' | 'poster';
   progress?: number;
-  // Right-hand caption, such as "E14".
+  // Short caption, such as "E14" or "84%": beside the title, or at the end
+  // of the meta line when there is one, so long titles keep the full width.
   tag?: string;
   // Second caption line under posters.
   meta?: string;
@@ -96,7 +97,7 @@ export const MediaCard = memo(function MediaCard({
         <Text variant="cardTitle" color={textColor} numberOfLines={shape === 'poster' ? 2 : 1} style={{ flex: 1 }}>
           {title}
         </Text>
-        {tag && (
+        {tag && !meta && (
           <Text variant="meta" color={mutedColor}>
             {tag}
           </Text>
@@ -104,7 +105,7 @@ export const MediaCard = memo(function MediaCard({
       </View>
       {meta && (
         <Text variant="meta" color={mutedColor} numberOfLines={1} style={{ paddingHorizontal: inset, marginTop: -6 }}>
-          {meta}
+          {tag ? `${meta}  ·  ${tag}` : meta}
         </Text>
       )}
     </View>

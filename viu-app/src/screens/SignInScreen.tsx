@@ -35,7 +35,7 @@ export function SignInScreen() {
       await signIn(token);
       nav.back();
     } catch (e) {
-      setError(`AniList didn't accept that token: ${(e as Error).message}`);
+      setError(`AniList didn’t accept that token: ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }

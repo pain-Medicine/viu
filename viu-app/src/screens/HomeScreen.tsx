@@ -19,7 +19,7 @@ import { Rail } from '../ui/Rail';
 import { useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
-import { formatLabel, metaLine, minutesLeft } from './format';
+import { countLabel, formatLabel, metaLine, minutesLeft } from './format';
 
 const ROW_H = 318;
 // The next row's heading shows under the current one, so it's clear there's
@@ -174,9 +174,9 @@ export function HomeScreen() {
           />
           <Button size={compact ? 'md' : 'lg'} label="Details" onPress={() => nav.push({ name: 'details', mediaId: hero.id })} />
           {theme.decor.indexLabels && entry && (
-            <View style={{ marginLeft: 18, width: 240, gap: 6 }}>
-              <ProgressBar value={progressOf(entry)} color={c.accent} track={c.outline} />
-              <Text variant="meta" color={c.textMuted}>
+            <View style={{ marginLeft: 18, gap: 6 }}>
+              <ProgressBar value={progressOf(entry)} color={c.accent} track={c.outline} style={{ width: 240 }} />
+              <Text variant="meta" color={c.textMuted} numberOfLines={1}>
                 {`${Math.round(progressOf(entry) * 100)}% — ${minutesLeft(entry)}`}
               </Text>
             </View>
@@ -201,7 +201,7 @@ export function HomeScreen() {
               <ErrorState
                 error={failure}
                 service="AniList"
-                title="Couldn't load Home"
+                title="Couldn’t load Home"
                 onRetry={retryAll}
                 style={{ marginLeft: 80, marginTop: 110 }}
               />
@@ -218,7 +218,7 @@ export function HomeScreen() {
             <ErrorState
               error={failure}
               service="AniList"
-              title="Couldn't load Home"
+              title="Couldn’t load Home"
               onRetry={retryAll}
               style={{ position: 'absolute', top: 260, left: 80 }}
             />
@@ -273,7 +273,7 @@ const HomeRow = memo(function HomeRow({
         <Hazard color={c.featureText} style={{ flex: 1, marginRight: 24 }} />
         {!theme.decor.hazard && <View style={{ flex: 1 }} />}
         <Text variant="meta" color={c.featureMuted}>
-          {`${row.items.length} titles`}
+          {countLabel(row.items.length, 'title')}
         </Text>
       </View>
       <Rail

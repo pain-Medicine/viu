@@ -15,7 +15,7 @@ import { Panel } from '../ui/Panel';
 import { useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
-import { formatLabel } from './format';
+import { countLabel, formatLabel } from './format';
 
 const DAYS = 7;
 const ROW_STEP = 135;
@@ -78,6 +78,9 @@ export function ScheduleScreen() {
   // Where the rows start inside the scroll view: 0 on a TV, below the nav and
   // days when the whole page scrolls.
   const rowsTop = useRef(0);
+  // Height of the day chips, which stay pinned to the top while the page
+  // scrolls, so the rows they cover are left out of scroll targets.
+  const daysH = useRef(0);
   const flow = useStage().mode === 'flow';
 
   // Today opens at what's airing next rather than at midnight. The scroll
@@ -87,7 +90,7 @@ export function ScheduleScreen() {
     if (opened.current || dayIndex !== 0 || !list.length) return;
     opened.current = true;
     const upcoming = list.findIndex((a) => a.airingAt > Date.now() / 1000);
-    const y = Math.max(0, (upcoming < 0 ? list.length : upcoming) - 1) * ROW_STEP + rowsTop.current;
+    const y = Math.max(0, (upcoming < 0 ? list.length : upcoming) - 1) * ROW_STEP + rowsTop.current - daysH.current;
     requestAnimationFrame(() => scroll.current?.scrollTo({ y, animated: false }));
   };
 
@@ -105,7 +108,7 @@ export function ScheduleScreen() {
   ));
   const count = (
     <Text variant="label" color={c.textMuted}>
-      {schedule.loading ? 'Loading…' : `${list.length} episodes`}
+      {schedule.loading ? 'Loading…' : countLabel(list.length, 'episode')}
     </Text>
   );
   const rows = (
@@ -116,7 +119,7 @@ export function ScheduleScreen() {
           autoFocus={false}
           error={schedule.error}
           service="AniList"
-          title="Couldn't load the schedule"
+          title="Couldn’t load the schedule"
           onRetry={schedule.retry}
         />
       )}
@@ -129,7 +132,7 @@ export function ScheduleScreen() {
           key={a.id}
           lift={false}
           radius={theme.shape.radiusMd}
-          onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, rowsTop.current + (i - 1) * ROW_STEP), animated: true })}
+          onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, rowsTop.current - daysH.current + (i - 1) * ROW_STEP), animated: true })}
           onPress={() => nav.push({ name: 'details', mediaId: a.media.id })}
           accessibilityLabel={`${timeLabel(a.airingAt)}, ${displayTitle(a.media)}, episode ${a.episode}, ${untilLabel(a.airingAt, now)}`}
         >
@@ -182,8 +185,9 @@ export function ScheduleScreen() {
     </>
   );
 
-  // Off the TV the whole page scrolls, nav and days included, so a short
-  // phone isn't left with a sliver of list under fixed headers.
+  // Off the TV the whole page scrolls so a short phone isn't left with a
+  // sliver of list under fixed headers. The nav scrolls away; the day chips
+  // stay pinned, so the list never loses which day it shows.
   if (flow) {
     return (
       <View style={StyleSheet.absoluteFill}>
@@ -193,9 +197,13 @@ export function ScheduleScreen() {
           style={StyleSheet.absoluteFill}
           contentContainerStyle={{ paddingTop: theme.layout.contentTop, paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
+          stickyHeaderIndices={[1]}
         >
           <TopNav active="schedule" />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, paddingRight: 80 }}>
+          <View
+            onLayout={(e) => (daysH.current = e.nativeEvent.layout.height)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 20, paddingRight: 80, backgroundColor: c.ground }}
+          >
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}

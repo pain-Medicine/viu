@@ -1,4 +1,4 @@
-import { Text as RNText, TextProps, TextStyle } from 'react-native';
+import { Platform, Text as RNText, TextProps, TextStyle } from 'react-native';
 
 import { useTheme } from '../state/settings';
 import type { TextRole, Theme } from '../theme/types';
@@ -33,16 +33,28 @@ export function textStyle(theme: Theme, variant: TextRole, size?: number): TextS
   };
 }
 
+// Headings and card titles balance their lines, so a long title doesn't leave one word alone
+// on the last line. Android has its own setting for it; browsers take CSS.
+const BALANCED: TextRole[] = ['hero', 'page', 'headline', 'section', 'cardTitle'];
+const balancedWeb = { textWrap: 'balance' } as TextStyle;
+
 // Theme-aware text. Screens name what the text is for; the theme decides how
 // that looks, so screens never need to know which theme is active.
 export function Text({ variant = 'body', size, color, theme: override, style, children, ...rest }: Props) {
   const active = useTheme();
   const theme = override ?? active;
+  const balanced = BALANCED.includes(variant);
   return (
     <RNText
       maxFontSizeMultiplier={MAX_FONT_SCALE}
+      textBreakStrategy={balanced ? 'balanced' : undefined}
       {...rest}
-      style={[textStyle(theme, variant, size), { color: color ?? theme.colors.text }, style]}
+      style={[
+        textStyle(theme, variant, size),
+        { color: color ?? theme.colors.text },
+        balanced && Platform.OS === 'web' && balancedWeb,
+        style,
+      ]}
     >
       {children}
     </RNText>

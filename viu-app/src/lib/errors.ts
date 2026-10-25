@@ -15,7 +15,7 @@ export class NetworkError extends Error {
     readonly service: string,
     cause?: unknown,
   ) {
-    super(`Couldn't reach ${service}${cause instanceof Error ? `: ${cause.message}` : ''}`);
+    super(`Couldn’t reach ${service}${cause instanceof Error ? `: ${cause.message}` : ''}`);
   }
 }
 
@@ -47,7 +47,7 @@ export function explain(error: Error, service: string, fallbackTitle: string, de
   const who = error instanceof HttpError || error instanceof NetworkError ? error.service : service;
   if (error instanceof NetworkError || (error instanceof TypeError && looksOffline(error)) || looksOffline(error)) {
     return {
-      title: `Can't reach ${who}`,
+      title: `Can’t reach ${who}`,
       body: `${device === 'browser' ? 'Check your internet connection.' : `Check this ${device}'s internet connection.`} If Viu uses a VPN or proxy, check it in Settings.`,
       detail: error.message,
     };
@@ -57,7 +57,7 @@ export function explain(error: Error, service: string, fallbackTitle: string, de
       return { title: `${who} is busy`, body: 'Too many requests in a short time. Wait a minute, then try again.', detail: error.message };
     }
     if (error.status >= 500) {
-      return { title: `${who} is having trouble`, body: "It's not your connection. Try again in a few minutes.", detail: error.message };
+      return { title: `${who} is having trouble`, body: "It’s not your connection. Try again in a few minutes.", detail: error.message };
     }
   }
   return { title: fallbackTitle, body: error.message };
