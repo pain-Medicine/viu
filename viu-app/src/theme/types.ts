@@ -34,7 +34,10 @@ export type TextRole =
   | 'bodyLg'
   | 'body'
   | 'bodyBold'
-  // Metadata, notes and statuses.
+  // A sentence or two of explanation beside a control: Settings notes,
+  // hints. Always set as reading text, never in a label face.
+  | 'note'
+  // Metadata and short statuses, a few words at most.
   | 'label'
   | 'labelBold'
   // The smallest text: counts, card meta, crumbs. Still readable from the couch.

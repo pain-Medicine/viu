@@ -3,6 +3,7 @@ import { View, ViewStyle } from 'react-native';
 import { useTheme } from '../state/settings';
 import { Focusable } from './Focusable';
 import { Icon } from './Icon';
+import { useStage } from './Stage';
 import { useSurface } from './Surface';
 import { Text } from './Text';
 
@@ -39,7 +40,11 @@ export function Chip({ label, selected, badge, check, size = 'md', onPress, onFo
     border = bg;
   }
 
-  const h = size === 'md' ? theme.shape.chipHeight : theme.shape.chipHeight - 6;
+  // Chips you can press are at least 56 px off the TV, which with the touch
+  // slop in Focusable makes a full-size finger target.
+  const touch = useStage().mode === 'flow' && !!onPress;
+  const base = size === 'md' ? theme.shape.chipHeight : theme.shape.chipHeight - 6;
+  const h = touch ? Math.max(base, 56) : base;
   const body = (
     <View
       style={[
@@ -71,6 +76,8 @@ export function Chip({ label, selected, badge, check, size = 'md', onPress, onFo
       onFocus={onFocus}
       autoFocus={autoFocus}
       selected={selected}
+      // A chip with a selected state is one choice of several.
+      role={selected === undefined ? 'button' : 'radio'}
       radius={theme.shape.chip}
       lift={false}
       accessibilityLabel={accessibilityLabel ?? label}

@@ -41,13 +41,14 @@ export interface Explained {
 const looksOffline = (e: Error) => /network request failed|failed to fetch|load failed|networkerror/i.test(e.message);
 
 // Plain words for an error. `service` names who we were talking to when the
-// error itself doesn't say.
-export function explain(error: Error, service: string, fallbackTitle: string): Explained {
+// error itself doesn't say; `device` is what Viu runs on ("TV", "phone",
+// "browser"), for the connection hint.
+export function explain(error: Error, service: string, fallbackTitle: string, device = 'TV'): Explained {
   const who = error instanceof HttpError || error instanceof NetworkError ? error.service : service;
   if (error instanceof NetworkError || (error instanceof TypeError && looksOffline(error)) || looksOffline(error)) {
     return {
       title: `Can't reach ${who}`,
-      body: "Check the TV's internet connection. If Viu uses a VPN or proxy, check it in Settings.",
+      body: `${device === 'browser' ? 'Check your internet connection.' : `Check this ${device}'s internet connection.`} If Viu uses a VPN or proxy, check it in Settings.`,
       detail: error.message,
     };
   }

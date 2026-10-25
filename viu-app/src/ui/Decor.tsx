@@ -5,10 +5,13 @@ import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, Line, Pattern, Rect } from 'react-native-svg';
 
 import { useTheme } from '../state/settings';
+import { useStage } from './Stage';
 import { Text } from './Text';
 
 export function FrameMarks({ crumb }: { crumb?: string }) {
   const theme = useTheme();
+  // Pages that scroll would slide under a fixed crumb, so it's TV-only.
+  const flow = useStage().mode === 'flow';
   if (!theme.decor.frameMarks) return null;
   return (
     <>
@@ -25,7 +28,7 @@ export function FrameMarks({ crumb }: { crumb?: string }) {
           opacity: 0.4,
         }}
       />
-      {crumb && (
+      {crumb && !flow && (
         <Text variant="meta" color={theme.colors.textMuted} style={{ position: 'absolute', top: 30, left: 80 }}>
           {crumb}
         </Text>

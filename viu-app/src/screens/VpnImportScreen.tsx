@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { onConfigReceived, ViuNetwork } from '../../modules/viu-network';
+import { deviceKind } from '../lib/device';
 import { useNav } from '../nav/navigation';
 import { useNetwork, wgEndpoint } from '../state/network';
 import { useSettings } from '../state/settings';
@@ -64,7 +65,7 @@ export function VpnImportScreen() {
         <View style={{ gap: 14 }}>
           <Text variant="page">Add a WireGuard VPN</Text>
           <Text variant="bodyLg" color={c.textMuted}>
-            Only Viu uses the VPN. Other apps on this TV keep their normal connection.
+            Only Viu uses the VPN. {`Other apps on this ${deviceKind()} keep their normal connection.`}
           </Text>
         </View>
 
@@ -75,7 +76,7 @@ export function VpnImportScreen() {
               'Get a WireGuard config on your phone',
               'Any WireGuard .conf works. For Proton VPN: account.protonvpn.com → Downloads → WireGuard configuration, then download one.',
             )}
-            {step('2', 'Open the page on the right', 'Scan the code with a phone on the same Wi-Fi as this TV, or type the address.')}
+            {step('2', 'Open the page on the right', `Scan the code with a phone on the same Wi-Fi as this ${deviceKind()}, or type the address.`)}
             {step('3', 'Send the file', 'Pick the .conf file (or paste its text) and tap Send to TV. Viu connects right away.')}
             {received && (
               <View style={{ flexDirection: 'row', gap: 20, alignItems: 'center', marginLeft: 74 }}>

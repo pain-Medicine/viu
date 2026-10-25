@@ -3,6 +3,7 @@ import { ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-nat
 
 import { CardMedia, getMany, ListStatus, listCollection } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
+import { deviceKind } from '../lib/device';
 import { useNav } from '../nav/navigation';
 import { useAccount } from '../state/account';
 import { useLocalList } from '../state/mylist';
@@ -13,7 +14,7 @@ import { FrameMarks } from '../ui/Decor';
 import { Empty } from '../ui/Empty';
 import { ErrorState } from '../ui/ErrorState';
 import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
-import { gridColumns, useCardSize, useStage } from '../ui/Stage';
+import { gridColumns, gridGap, useCardSize, useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 import { formatLabel } from './format';
@@ -82,7 +83,7 @@ export function MyListScreen() {
     <ListLayout
       crumb="VIU.TV / MY LIST"
       header={<SignInPrompt />}
-      note="Saved on this TV"
+      note={`Saved on this ${deviceKind()}`}
       items={items}
       loading={saved.loading && !saved.data}
       error={saved.error}
@@ -98,8 +99,8 @@ function SignInPrompt() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
       <Button autoFocus size="sm" label="Sign in to AniList" onPress={() => nav.push({ name: 'signin' })} />
-      <Text variant="label" color={theme.colors.textMuted}>
-        Use your AniList lists here instead of this TV’s.
+      <Text variant="note" color={theme.colors.textMuted} style={{ flexShrink: 1 }}>
+        {`Use your AniList lists here instead of this ${deviceKind()}’s.`}
       </Text>
     </View>
   );
@@ -156,12 +157,14 @@ function ListLayout({
       <ScrollView
         ref={scroll}
         style={{ position: 'absolute', top: theme.layout.contentTop + 66, left: 66, right: 66, bottom: 0 }}
-        contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 32, rowGap: 32, padding: 14, paddingBottom: 80 }}
+        contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: gridGap(stage.width - 132, cardW, 32), rowGap: 32, padding: 14, paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
       >
         {error && <ErrorState compact error={error} service="AniList" title="Couldn't load My List" onRetry={onRetry} />}
         {loading && <PosterSkeletons count={cols} width={cardW} height={cardH} />}
-        {!loading && !error && !items.length && <Empty title={empty.title} body={empty.body} />}
+        {!loading && !error && !items.length && (
+          <Empty title={empty.title} body={empty.body} action={{ label: 'Browse titles', onPress: () => nav.goTo({ name: 'browse' }) }} />
+        )}
         {items.map(({ media, tag }, i) => (
           <MediaCard
             key={media.id}

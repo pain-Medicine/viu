@@ -11,7 +11,7 @@ import { Empty } from '../ui/Empty';
 import { ErrorState } from '../ui/ErrorState';
 import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
 import { Panel } from '../ui/Panel';
-import { gridColumns, useCardSize, useStage } from '../ui/Stage';
+import { gridColumns, gridGap, useCardSize, useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 import { formatLabel } from './format';
@@ -56,10 +56,15 @@ export function BrowseScreen() {
   const nav = useNav();
   const stage = useStage();
   const { cardW, cardH, rowStep } = useCardSize(CARD_W, CARD_H);
+  // Off the TV the filters sit above the results as one swipeable row per
+  // group, and the whole page scrolls.
+  const flow = stage.mode === 'flow';
   const panelW = stage.narrow ? 360 : 600;
-  const gridLeft = 80 + panelW + 20;
+  const gridLeft = flow ? 66 : 80 + panelW + 20;
+  const gridW = stage.width - gridLeft - 66;
   // As many poster columns as the screen has room for.
-  const cols = gridColumns(stage.width - gridLeft - 66, cardW);
+  const cols = gridColumns(gridW, cardW);
+  const colGap = gridGap(gridW, cardW);
 
   const thisYear = currentSeason().year;
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i);
@@ -82,17 +87,114 @@ export function BrowseScreen() {
   };
   const key = JSON.stringify(filter);
   const grid = useRef<ScrollViewInstance>(null);
+  // Where the results start inside the scroll view (below the filters in flow).
+  const gridTop = useRef(0);
   const [lastPage, setLastPage] = useState<{ key: string; page: number; count: number } | null>(null);
   const more = lastPage?.key === key && lastPage.page === pages && lastPage.count === PER_PAGE;
 
-  const group = (label: string, children: React.ReactNode) => (
-    <View style={{ gap: 12 }}>
-      <Text variant="meta" color={c.featureMuted}>
-        {label}
-      </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{children}</View>
-    </View>
+  const group = (label: string, children: React.ReactNode) =>
+    flow ? (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text variant="meta" color={c.textMuted} style={{ width: 150, paddingLeft: 80 - 66 }}>
+          {label}
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ gap: 10, paddingVertical: 10, paddingRight: 14 }}
+        >
+          {children}
+        </ScrollView>
+      </View>
+    ) : (
+      <View style={{ gap: 12 }}>
+        <Text variant="meta" color={c.featureMuted}>
+          {label}
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{children}</View>
+      </View>
+    );
+
+  const filterGroups = (
+    <>
+      {group(
+        'Sort',
+        SORTS.map((s, i) => (
+          <Chip key={s.label} label={s.label} selected={filters.sort === i} autoFocus={i === 0} onPress={() => set({ sort: i })} />
+        )),
+      )}
+      {group('Format', [
+        <Chip key="any" label="Any" selected={!filters.format} onPress={() => set({ format: undefined })} />,
+        ...FORMATS.map((f) => (
+          <Chip key={f} label={FORMAT_LABELS[f]} selected={filters.format === f} onPress={() => set({ format: f })} />
+        )),
+      ])}
+      {group('Year', [
+        <Chip key="any" label="Any" selected={!filters.year} onPress={() => set({ year: undefined })} />,
+        ...years.map((y) => <Chip key={y} label={String(y)} selected={filters.year === y} onPress={() => set({ year: y })} />),
+      ])}
+      {group('Season', [
+        <Chip key="any" label="Any" selected={!filters.season} onPress={() => set({ season: undefined })} />,
+        ...SEASONS.map((s) => (
+          <Chip key={s} label={SEASON_LABELS[s]} selected={filters.season === s} onPress={() => set({ season: s })} />
+        )),
+      ])}
+      {group('Genre', [
+        <Chip key="any" label="Any" selected={!filters.genre} onPress={() => set({ genre: undefined })} />,
+        ...GENRES.map((g) => <Chip key={g} label={g} selected={filters.genre === g} onPress={() => set({ genre: g })} />),
+      ])}
+    </>
   );
+  const results = (
+    <>
+      {Array.from({ length: pages }, (_, i) => (
+        <ResultsPage
+          key={`${key}:${i + 1}`}
+          filter={filter}
+          page={i + 1}
+          onLoaded={(count) => setLastPage({ key, page: i + 1, count })}
+          onFocusIndex={(n) => {
+            grid.current?.scrollTo({
+              y: Math.max(0, gridTop.current + Math.floor((i * PER_PAGE + n) / cols) * rowStep - (flow ? 160 : 0)),
+              animated: true,
+            });
+            // Reaching the last row of what's loaded fetches the next page,
+            // so a remote never has to find a "more" button.
+            if (more && i + 1 === pages && n >= PER_PAGE - cols) setPages((p) => p + 1);
+          }}
+          cols={cols}
+          onOpen={(id) => nav.push({ name: 'details', mediaId: id })}
+        />
+      ))}
+    </>
+  );
+  const gridStyle = { flexDirection: 'row', flexWrap: 'wrap', columnGap: colGap, rowGap: 32, padding: 14 } as const;
+
+  if (flow) {
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        <ScrollView
+          ref={grid}
+          style={StyleSheet.absoluteFill}
+          contentContainerStyle={{ paddingTop: theme.layout.contentTop - 10, paddingHorizontal: 66, paddingBottom: 80 }}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={200}
+          onScroll={(e) => {
+            // Touch never focuses the last card, so nearing the end loads more.
+            const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+            if (more && contentOffset.y + layoutMeasurement.height > contentSize.height - 2 * rowStep) setPages((p) => p + 1);
+          }}
+        >
+          <TopNav active="browse" />
+          <View style={{ gap: 2 }}>{filterGroups}</View>
+          <View style={[gridStyle, { marginTop: 16 }]} onLayout={(e) => (gridTop.current = e.nativeEvent.layout.y)}>
+            {results}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={StyleSheet.absoluteFill}>
@@ -101,57 +203,17 @@ export function BrowseScreen() {
 
       <Panel style={{ position: 'absolute', top: theme.layout.contentTop, left: 80, bottom: 56, width: panelW }}>
         <ScrollView contentContainerStyle={{ padding: stage.narrow ? 22 : 28, gap: 26 }} showsVerticalScrollIndicator={false}>
-          {group(
-            'Sort',
-            SORTS.map((s, i) => (
-              <Chip key={s.label} label={s.label} selected={filters.sort === i} autoFocus={i === 0} onPress={() => set({ sort: i })} />
-            )),
-          )}
-          {group('Format', [
-            <Chip key="any" label="Any" selected={!filters.format} onPress={() => set({ format: undefined })} />,
-            ...FORMATS.map((f) => (
-              <Chip key={f} label={FORMAT_LABELS[f]} selected={filters.format === f} onPress={() => set({ format: f })} />
-            )),
-          ])}
-          {group('Year', [
-            <Chip key="any" label="Any" selected={!filters.year} onPress={() => set({ year: undefined })} />,
-            ...years.map((y) => <Chip key={y} label={String(y)} selected={filters.year === y} onPress={() => set({ year: y })} />),
-          ])}
-          {group('Season', [
-            <Chip key="any" label="Any" selected={!filters.season} onPress={() => set({ season: undefined })} />,
-            ...SEASONS.map((s) => (
-              <Chip key={s} label={SEASON_LABELS[s]} selected={filters.season === s} onPress={() => set({ season: s })} />
-            )),
-          ])}
-          {group('Genre', [
-            <Chip key="any" label="Any" selected={!filters.genre} onPress={() => set({ genre: undefined })} />,
-            ...GENRES.map((g) => <Chip key={g} label={g} selected={filters.genre === g} onPress={() => set({ genre: g })} />),
-          ])}
+          {filterGroups}
         </ScrollView>
       </Panel>
 
       <ScrollView
         ref={grid}
         style={{ position: 'absolute', top: theme.layout.contentTop - 14, left: gridLeft, right: 66, bottom: 0 }}
-        contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 24, rowGap: 32, padding: 14, paddingBottom: 80 }}
+        contentContainerStyle={[gridStyle, { paddingBottom: 80 }]}
         showsVerticalScrollIndicator={false}
       >
-        {Array.from({ length: pages }, (_, i) => (
-          <ResultsPage
-            key={`${key}:${i + 1}`}
-            filter={filter}
-            page={i + 1}
-            onLoaded={(count) => setLastPage({ key, page: i + 1, count })}
-            onFocusIndex={(n) => {
-              grid.current?.scrollTo({ y: Math.max(0, Math.floor((i * PER_PAGE + n) / cols) * rowStep), animated: true });
-              // Reaching the last row of what's loaded fetches the next page,
-              // so a remote never has to find a "more" button.
-              if (more && i + 1 === pages && n >= PER_PAGE - cols) setPages((p) => p + 1);
-            }}
-            cols={cols}
-            onOpen={(id) => nav.push({ name: 'details', mediaId: id })}
-          />
-        ))}
+        {results}
       </ScrollView>
     </View>
   );

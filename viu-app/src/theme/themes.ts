@@ -1,8 +1,9 @@
 import type { Theme, ThemeId } from './types';
 
-// Sizes are in canvas pixels on the 1920×1080 stage. Nothing a viewer needs
-// to read goes below 18 (about 9 sp on an Android TV), which is still legible
-// from a sofa three metres away; body copy is 24 and up.
+// Sizes are in canvas pixels on the 1920×1080 stage, where 2 px is 1 sp on an
+// Android TV. Nothing a viewer needs to read goes below 22 (11 sp), labels are
+// 24 (12 sp, Android TV's floor for a sofa three metres away), body copy is 24
+// and up.
 
 // v2 on the design canvas: Material 3 tonal colour from a coral seed, macOS glass.
 export const material: Theme = {
@@ -73,10 +74,11 @@ export const material: Theme = {
     bodyLg: { font: 'body', size: 26, lineHeight: 1.45 },
     body: { font: 'body', size: 24, lineHeight: 1.45 },
     bodyBold: { font: 'bodyBold', size: 24, lineHeight: 1.4 },
-    label: { font: 'label', size: 22, lineHeight: 1.35 },
-    labelBold: { font: 'labelBold', size: 22, lineHeight: 1.35 },
-    meta: { font: 'label', size: 20, lineHeight: 1.3 },
-    metaBold: { font: 'labelBold', size: 20, lineHeight: 1.3 },
+    note: { font: 'body', size: 24, lineHeight: 1.4 },
+    label: { font: 'label', size: 24, lineHeight: 1.35 },
+    labelBold: { font: 'labelBold', size: 24, lineHeight: 1.35 },
+    meta: { font: 'label', size: 22, lineHeight: 1.3 },
+    metaBold: { font: 'labelBold', size: 22, lineHeight: 1.3 },
   },
   buttonScale: 1,
   shape: {
@@ -171,10 +173,11 @@ export const graphic: Theme = {
     bodyLg: { font: 'body', size: 26, lineHeight: 1.45 },
     body: { font: 'body', size: 24, lineHeight: 1.45 },
     bodyBold: { font: 'bodyBold', size: 24, lineHeight: 1.4 },
-    label: { font: 'label', size: 20, lineHeight: 1.3, tracking: 0.08, upper: true },
-    labelBold: { font: 'labelBold', size: 20, lineHeight: 1.3, tracking: 0.08, upper: true },
-    meta: { font: 'label', size: 18, lineHeight: 1.3, tracking: 0.09, upper: true },
-    metaBold: { font: 'labelBold', size: 18, lineHeight: 1.3, tracking: 0.09, upper: true },
+    note: { font: 'body', size: 24, lineHeight: 1.4 },
+    label: { font: 'label', size: 24, lineHeight: 1.3, tracking: 0.06, upper: true },
+    labelBold: { font: 'labelBold', size: 24, lineHeight: 1.3, tracking: 0.06, upper: true },
+    meta: { font: 'label', size: 22, lineHeight: 1.3, tracking: 0.07, upper: true },
+    metaBold: { font: 'labelBold', size: 22, lineHeight: 1.3, tracking: 0.07, upper: true },
   },
   buttonScale: 1.25,
   shape: {

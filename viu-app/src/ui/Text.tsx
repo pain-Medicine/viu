@@ -3,9 +3,9 @@ import { Text as RNText, TextProps, TextStyle } from 'react-native';
 import { useTheme } from '../state/settings';
 import type { TextRole, Theme } from '../theme/types';
 
-// Nothing smaller than this reaches the screen: below it, text on a TV at
-// sofa distance stops being readable.
-export const MIN_TEXT = 18;
+// Nothing smaller than this reaches the screen: below it (11 sp on an Android
+// TV), text at sofa distance stops being readable.
+export const MIN_TEXT = 22;
 
 // Android TV's "large text" setting scales fonts up to 1.3×; boxes around
 // text are sized to take that, and anything beyond it would clip.

@@ -25,7 +25,7 @@ export function SettingsScreen() {
   const nav = useNav();
   const { account, signOut } = useAccount();
   const note = (text: string) => (
-    <Text variant="label" color={c.textMuted} style={{ marginLeft: 12, flexShrink: 1 }}>
+    <Text variant="note" color={c.textMuted} style={{ marginLeft: 12, flexShrink: 1 }}>
       {text}
     </Text>
   );
@@ -77,7 +77,7 @@ export function SettingsScreen() {
               <Art uri={account.user.avatar} style={{ width: 64, height: 64, borderRadius: theme.shape.button }} />
               <View style={{ gap: 4 }}>
                 <Text variant="bodyBold">{account.user.name}</Text>
-                <Text variant="label" color={c.textMuted}>
+                <Text variant="note" color={c.textMuted}>
                   My List and watched episodes sync to this account.
                 </Text>
               </View>
@@ -95,10 +95,14 @@ export function SettingsScreen() {
         <NetworkSection />
 
         <Section label="About" index="05">
-          <Text color={c.textMuted}>
-            {`Viu 1.0  ·  Metadata from AniList  ·  Streams from AllAnime  ·  Skip times from AniSkip`}
-            {Platform.OS === 'web' ? `  ·  ${proxy ? 'Provider proxy on' : 'No provider proxy, so streaming is off in the browser'}` : ''}
-          </Text>
+          {/* Focusable though it does nothing, so the D-pad can reach the
+              bottom of the page and scroll it into view. */}
+          <Focusable lift={false} role="text" radius={theme.shape.radiusSm} style={{ alignSelf: 'flex-start' }}>
+            <Text color={c.textMuted} style={{ paddingVertical: 4, paddingRight: 8 }}>
+              {`Viu 1.0  ·  Metadata from AniList  ·  Streams from AllAnime  ·  Skip times from AniSkip`}
+              {Platform.OS === 'web' ? `  ·  ${proxy ? 'Provider proxy on' : 'No provider proxy, so streaming is off in the browser'}` : ''}
+            </Text>
+          </Focusable>
         </Section>
       </ScrollView>
     </View>
@@ -114,7 +118,7 @@ function NetworkSection() {
   const [focused, setFocused] = useState(false);
   const [check, setCheck] = useState<string | null>(null);
   const note = (text: string, color = c.textMuted) => (
-    <Text variant="label" color={color} style={{ marginLeft: 12, flexShrink: 1 }}>
+    <Text variant="note" color={color} style={{ marginLeft: 12, flexShrink: 1 }}>
       {text}
     </Text>
   );

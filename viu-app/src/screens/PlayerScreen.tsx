@@ -3,11 +3,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoSource, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as RN from 'react-native';
-import { type HostInstance, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, type HostInstance, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { displayTitle, getMedia } from '../api/anilist';
 import { SkipInterval, skipTimes } from '../api/aniskip';
 import { useAsync } from '../lib/useAsync';
+import { useReduceMotion } from '../lib/useReduceMotion';
 import { useNav, useScreenActive } from '../nav/navigation';
 import { findShow, playableUrl, provider, showKey, TranslationType } from '../providers';
 import { isWatched, useHistory } from '../state/history';
@@ -30,6 +31,8 @@ const SEEK_S = 10;
 const LONG_SEEK_S = 30;
 const UP_NEXT_S = 10;
 const SAVE_EVERY_S = 10;
+// The overlay fades in the same rhythm as the focus lift.
+const FADE_MS = 160;
 
 interface TVRemoteEvent {
   eventType: string;
@@ -89,6 +92,10 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   });
 
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  // Waiting for data mid-episode. The player reports this as not playing, but
+  // the viewer didn't pause, so it gets a spinner rather than the paused look.
+  const { status } = useEvent(player, 'statusChange', { status: player.status });
+  const buffering = status === 'loading';
   // A stream that won't load (expired, refused) moves on to the next server,
   // and shows an error once none is left.
   const [playError, setPlayError] = useState<Error>();
@@ -135,6 +142,13 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
     const i = episodes.indexOf(episode);
     return i >= 0 && i < episodes.length - 1 ? episodes[i + 1] : null;
   }, [episodes, episode]);
+  // From Details, the episode list is one step back. From Home's Continue
+  // watching it isn't there yet, so the player gives way to it.
+  const toEpisodes = () => {
+    const below = nav.stack[nav.stack.length - 2];
+    if (below?.name === 'details' && below.mediaId === mediaId) nav.back();
+    else nav.replace({ name: 'details', mediaId });
+  };
   const goNext = () => {
     save();
     if (next) nav.replace({ name: 'player', mediaId, episode: next, translation });
@@ -197,7 +211,7 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   }, [player]);
 
   // Paused, the controls stay up.
-  const controlsUp = overlay === 'controls' || !isPlaying;
+  const controlsUp = overlay === 'controls' || (!isPlaying && !buffering);
   const upNextShown = upNextIn !== null;
   const skipShown = !!option && !playError && !!skip && !settings.autoSkip && !upNextShown;
   // Which part of the screen holds the remote's focus.
@@ -304,6 +318,32 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
   const remaining = Math.max(0, duration - time.currentTime);
   const barShown = controlsUp || overlay === 'seeking';
 
+  // The overlay fades rather than snapping, and its controls stay drawn until
+  // the fade ends.
+  const reduceMotion = useReduceMotion();
+  const fade = useRef(new Animated.Value(1)).current;
+  const [lingering, setLingering] = useState(true);
+  useEffect(() => {
+    if (controlsUp) setLingering(true);
+    const to = barShown ? 1 : 0;
+    if (reduceMotion) {
+      fade.setValue(to);
+      if (!controlsUp) setLingering(false);
+      return;
+    }
+    const anim = Animated.timing(fade, {
+      toValue: to,
+      duration: FADE_MS,
+      easing: Easing.out(Easing.exp),
+      useNativeDriver: Platform.OS !== 'web',
+    });
+    anim.start(({ finished }) => {
+      if (finished && !controlsUp) setLingering(false);
+    });
+    return () => anim.stop();
+  }, [barShown, controlsUp, reduceMotion, fade]);
+  const controlsDrawn = controlsUp || lingering;
+
   return (
     // Black behind the video, for letterboxing, in every theme.
     <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]}>
@@ -358,7 +398,7 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
       )}
 
       {option && !error && (
-        <View style={[StyleSheet.absoluteFill, { opacity: barShown ? 1 : 0 }]} pointerEvents={controlsUp ? 'box-none' : 'none'}>
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: fade }]} pointerEvents={controlsUp ? 'box-none' : 'none'}>
           <FrameMarks crumb={`VIU.TV / PLAY / E${episode}`} />
           <LinearGradient
             pointerEvents="none"
@@ -366,7 +406,7 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
             style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 420 }}
           />
 
-          {controlsUp && (
+          {controlsDrawn && (
             <Panel
               kind="chrome"
               style={{
@@ -425,7 +465,7 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
                 {`−${clock(remaining)}`}
               </Text>
             </View>
-            {controlsUp && (
+            {controlsDrawn && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                 <Button
                   variant="ghost"
@@ -443,8 +483,8 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
                   autoFocus={focusOn === 'controls'}
                   focusable={focusOn === 'controls'}
                   variant="primary"
-                  icon={isPlaying ? 'pause' : 'play'}
-                  accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+                  icon={isPlaying || buffering ? 'pause' : 'play'}
+                  accessibilityLabel={isPlaying || buffering ? 'Pause' : 'Play'}
                   onPress={() => {
                     togglePlay();
                     showControls();
@@ -483,7 +523,7 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
                   icon="list"
                   label="Episodes"
                   focusable={focusOn === 'controls'}
-                  onPress={nav.back}
+                  onPress={toEpisodes}
                   onFocus={showControls}
                 />
                 {next && (
@@ -499,6 +539,12 @@ export function PlayerScreen({ mediaId, episode, translation }: { mediaId: numbe
               </View>
             )}
           </Panel>
+        </Animated.View>
+      )}
+
+      {option && !error && buffering && (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+          <ActivityIndicator size="large" color={c.text} accessibilityLabel="Loading video" style={{ transform: [{ scale: 2 }] }} />
         </View>
       )}
 

@@ -66,6 +66,7 @@ export function TopNav({ active }: { active: Section }) {
               radius={theme.shape.button}
               lift={false}
               selected={on}
+              role="tab"
               accessibilityLabel={item.label}
             >
               <View

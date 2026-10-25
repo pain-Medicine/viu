@@ -155,7 +155,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           accessibilityLabel="Back"
           style={{ alignSelf: 'flex-start' }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, paddingRight: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingRight: 8 }}>
             <Icon name="chevronLeft" size={24} color={c.textMuted} />
             <Text variant="label" color={c.textMuted}>
               Back
@@ -205,12 +205,12 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           />
         </View>
         {membership.error && (
-          <Text variant="label" color={c.accent}>
+          <Text variant="note" color={c.accent}>
             {`AniList: ${membership.error.message}`}
           </Text>
         )}
         {!membership.canToggle && !membership.loading && (
-          <Text variant="meta" color={c.textMuted}>
+          <Text variant="note" color={c.textMuted}>
             Change this title's status on AniList; removing it here would erase your progress.
           </Text>
         )}

@@ -207,7 +207,7 @@ export function HomeScreen() {
               />
             )}
             {heroContent({ marginLeft: 80 })}
-            {hero && wide && theme.decor.indexLabels && <Readout media={hero} entry={entry} rank={all.indexOf(hero) + 1} />}
+            {hero && wide && theme.decor.indexLabels && <Readout media={hero} entry={entry} />}
           </View>
           {rows.length > 0 && <Panel style={{ marginHorizontal: 56, marginBottom: 22, paddingBottom: 22 }}>{rowList}</Panel>}
         </ScrollView>
@@ -225,7 +225,7 @@ export function HomeScreen() {
           )}
           {loading && <HomeSkeleton />}
           {heroContent({ position: 'absolute', top: theme.layout.contentTop - 6, left: 80 })}
-          {hero && wide && theme.decor.indexLabels && <Readout media={hero} entry={entry} rank={all.indexOf(hero) + 1} />}
+          {hero && wide && theme.decor.indexLabels && <Readout media={hero} entry={entry} />}
           {rows.length > 0 && (
             <Panel style={{ position: 'absolute', left: 56, right: 56, bottom: 22, height: ROW_H + PEEK }}>
               <ScrollView ref={vertical} scrollEnabled={false} showsVerticalScrollIndicator={false}>
@@ -352,10 +352,13 @@ function sizeFor(title: string, base: number): number {
 
 // The graphic theme's spec-sheet column: an outlined index number and a few
 // data lines, set beside the hero like a game's loadout screen.
-function Readout({ media, entry, rank }: { media: Media; entry?: HistoryEntry; rank: number }) {
+function Readout({ media, entry }: { media: Media; entry?: HistoryEntry }) {
   const { theme } = useSettings();
   const c = theme.colors;
-  const big = entry ? entry.episode : String(rank).padStart(2, '0');
+  // The big figure is the episode you're on, or the year it came out; a
+  // title's place in the rows would mean nothing to the viewer.
+  const big = entry ? entry.episode : media.seasonYear ? String(media.seasonYear) : '—';
+  const bigLabel = entry ? 'Your episode' : 'Year';
   const lines: [string, string][] = [
     ['Source', 'AllAnime'],
     ['Episodes', media.episodes ? String(media.episodes) : media.nextAiringEpisode ? `${media.nextAiringEpisode.episode - 1}+` : '—'],
@@ -369,6 +372,9 @@ function Readout({ media, entry, rank }: { media: Media; entry?: HistoryEntry; r
           {big}
         </SvgText>
       </Svg>
+      <Text variant="meta" color={c.textMuted}>
+        {bigLabel}
+      </Text>
       <View style={{ height: 1, backgroundColor: c.outline }} />
       {lines.map(([k, v]) => (
         <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

@@ -12,6 +12,7 @@ import { Empty } from '../ui/Empty';
 import { ErrorState } from '../ui/ErrorState';
 import { Focusable } from '../ui/Focusable';
 import { Panel } from '../ui/Panel';
+import { useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
 import { formatLabel } from './format';
@@ -74,6 +75,10 @@ export function ScheduleScreen() {
   const list = byDay[dayIndex];
   const now = Date.now() / 1000;
   const scroll = useRef<ScrollViewInstance>(null);
+  // Where the rows start inside the scroll view: 0 on a TV, below the nav and
+  // days when the whole page scrolls.
+  const rowsTop = useRef(0);
+  const flow = useStage().mode === 'flow';
 
   // Today opens at what's airing next rather than at midnight. The scroll
   // waits for the rows to lay out, since it can't go past the content yet.
@@ -82,9 +87,134 @@ export function ScheduleScreen() {
     if (opened.current || dayIndex !== 0 || !list.length) return;
     opened.current = true;
     const upcoming = list.findIndex((a) => a.airingAt > Date.now() / 1000);
-    const y = Math.max(0, (upcoming < 0 ? list.length : upcoming) - 1) * ROW_STEP;
+    const y = Math.max(0, (upcoming < 0 ? list.length : upcoming) - 1) * ROW_STEP + rowsTop.current;
     requestAnimationFrame(() => scroll.current?.scrollTo({ y, animated: false }));
   };
+
+  const chips = days.map((d, i) => (
+    <Chip
+      key={i}
+      label={dayLabel(d, i)}
+      selected={dayIndex === i}
+      autoFocus={i === 0}
+      onPress={() => {
+        setDayIndex(i);
+        scroll.current?.scrollTo({ y: 0, animated: false });
+      }}
+    />
+  ));
+  const count = (
+    <Text variant="label" color={c.textMuted}>
+      {schedule.loading ? 'Loading…' : `${list.length} episodes`}
+    </Text>
+  );
+  const rows = (
+    <>
+      {schedule.error && (
+        <ErrorState
+          compact
+          autoFocus={false}
+          error={schedule.error}
+          service="AniList"
+          title="Couldn't load the schedule"
+          onRetry={schedule.retry}
+        />
+      )}
+      {schedule.loading && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} style={{ height: 112, marginBottom: 8 }} />)}
+      {!schedule.loading && !schedule.error && !list.length && (
+        <Empty title="A quiet day" body="Nothing on AniList airs on this day. Try another one." />
+      )}
+      {list.map((a, i) => (
+        <Focusable
+          key={a.id}
+          lift={false}
+          radius={theme.shape.radiusMd}
+          onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, rowsTop.current + (i - 1) * ROW_STEP), animated: true })}
+          onPress={() => nav.push({ name: 'details', mediaId: a.media.id })}
+          accessibilityLabel={`${timeLabel(a.airingAt)}, ${displayTitle(a.media)}, episode ${a.episode}, ${untilLabel(a.airingAt, now)}`}
+        >
+          {(focused) => (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 28,
+                padding: 14,
+                borderRadius: theme.shape.radiusMd,
+                backgroundColor: focused ? c.rowFocus : 'transparent',
+                opacity: a.airingAt <= now ? 0.7 : 1,
+              }}
+            >
+              <Text variant="numeral" color={c.featureText} style={{ width: 120 }}>
+                {timeLabel(a.airingAt)}
+              </Text>
+              <Art
+                uri={a.media.bannerImage ?? a.media.coverImage.large}
+                fallback={a.media.coverImage.color}
+                style={{ width: 176, height: 99, borderRadius: Math.max(0, theme.shape.radiusMd - 6) }}
+              />
+              <View style={{ flex: 1, gap: 6 }}>
+                <Text variant="item" color={c.featureText} numberOfLines={1}>
+                  {displayTitle(a.media)}
+                </Text>
+                <Text variant="label" color={c.featureMuted} numberOfLines={1}>
+                  {[
+                    `Episode ${a.episode}${a.media.episodes ? ` of ${a.media.episodes}` : ''}`,
+                    formatLabel(a.media),
+                    a.media.studios.nodes[0]?.name,
+                  ]
+                    .filter(Boolean)
+                    .join('  ·  ')}
+                </Text>
+              </View>
+              <Hazard color={c.featureText} style={{ width: 120 }} />
+              <Text
+                variant="label"
+                color={a.airingAt <= now ? c.featureMuted : c.featureAccent}
+                style={{ width: 170, textAlign: 'right', paddingRight: 12 }}
+              >
+                {untilLabel(a.airingAt, now)}
+              </Text>
+            </View>
+          )}
+        </Focusable>
+      ))}
+    </>
+  );
+
+  // Off the TV the whole page scrolls, nav and days included, so a short
+  // phone isn't left with a sliver of list under fixed headers.
+  if (flow) {
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        <ScrollView
+          ref={scroll}
+          onContentSizeChange={toUpcoming}
+          style={StyleSheet.absoluteFill}
+          contentContainerStyle={{ paddingTop: theme.layout.contentTop, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <TopNav active="schedule" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, paddingRight: 80 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ gap: 12, paddingLeft: 80, paddingVertical: 10, paddingRight: 20 }}
+            >
+              {chips}
+            </ScrollView>
+            {count}
+          </View>
+          <View onLayout={(e) => (rowsTop.current = e.nativeEvent.layout.y)}>
+            <Panel style={{ marginHorizontal: 56, marginTop: 10, padding: 22 }}>
+              <View style={{ gap: 8, padding: 10 }}>{rows}</View>
+            </Panel>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={StyleSheet.absoluteFill}>
@@ -102,22 +232,9 @@ export function ScheduleScreen() {
           alignItems: 'center',
         }}
       >
-        {days.map((d, i) => (
-          <Chip
-            key={i}
-            label={dayLabel(d, i)}
-            selected={dayIndex === i}
-            autoFocus={i === 0}
-            onPress={() => {
-              setDayIndex(i);
-              scroll.current?.scrollTo({ y: 0, animated: false });
-            }}
-          />
-        ))}
+        {chips}
         <View style={{ flex: 1 }} />
-        <Text variant="label" color={c.textMuted}>
-          {schedule.loading ? 'Loading…' : `${list.length} episodes`}
-        </Text>
+        {count}
       </View>
 
       <Panel style={{ position: 'absolute', top: theme.layout.contentTop + 80, left: 56, right: 56, bottom: 40, padding: 22 }}>
@@ -128,75 +245,7 @@ export function ScheduleScreen() {
           contentContainerStyle={{ gap: 8, padding: 10 }}
           showsVerticalScrollIndicator={false}
         >
-          {schedule.error && (
-            <ErrorState
-              compact
-              autoFocus={false}
-              error={schedule.error}
-              service="AniList"
-              title="Couldn't load the schedule"
-              onRetry={schedule.retry}
-            />
-          )}
-          {schedule.loading && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} style={{ height: 112, marginBottom: 8 }} />)}
-          {!schedule.loading && !schedule.error && !list.length && (
-            <Empty title="A quiet day" body="Nothing on AniList airs on this day. Try another one." />
-          )}
-          {list.map((a, i) => (
-            <Focusable
-              key={a.id}
-              lift={false}
-              radius={theme.shape.radiusMd}
-              onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, (i - 1) * ROW_STEP), animated: true })}
-              onPress={() => nav.push({ name: 'details', mediaId: a.media.id })}
-              accessibilityLabel={`${timeLabel(a.airingAt)}, ${displayTitle(a.media)}, episode ${a.episode}, ${untilLabel(a.airingAt, now)}`}
-            >
-              {(focused) => (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 28,
-                    padding: 14,
-                    borderRadius: theme.shape.radiusMd,
-                    backgroundColor: focused ? c.rowFocus : 'transparent',
-                    opacity: a.airingAt <= now ? 0.7 : 1,
-                  }}
-                >
-                  <Text variant="numeral" color={c.featureText} style={{ width: 120 }}>
-                    {timeLabel(a.airingAt)}
-                  </Text>
-                  <Art
-                    uri={a.media.bannerImage ?? a.media.coverImage.large}
-                    fallback={a.media.coverImage.color}
-                    style={{ width: 176, height: 99, borderRadius: Math.max(0, theme.shape.radiusMd - 6) }}
-                  />
-                  <View style={{ flex: 1, gap: 6 }}>
-                    <Text variant="item" color={c.featureText} numberOfLines={1}>
-                      {displayTitle(a.media)}
-                    </Text>
-                    <Text variant="label" color={c.featureMuted} numberOfLines={1}>
-                      {[
-                        `Episode ${a.episode}${a.media.episodes ? ` of ${a.media.episodes}` : ''}`,
-                        formatLabel(a.media),
-                        a.media.studios.nodes[0]?.name,
-                      ]
-                        .filter(Boolean)
-                        .join('  ·  ')}
-                    </Text>
-                  </View>
-                  <Hazard color={c.featureText} style={{ width: 120 }} />
-                  <Text
-                    variant="label"
-                    color={a.airingAt <= now ? c.featureMuted : c.featureAccent}
-                    style={{ width: 170, textAlign: 'right', paddingRight: 12 }}
-                  >
-                    {untilLabel(a.airingAt, now)}
-                  </Text>
-                </View>
-              )}
-            </Focusable>
-          ))}
+          {rows}
         </ScrollView>
       </Panel>
     </View>

@@ -1,5 +1,6 @@
 import { View, ViewStyle } from 'react-native';
 
+import { deviceKind } from '../lib/device';
 import { explain } from '../lib/errors';
 import { useNetwork } from '../state/network';
 import { useTheme } from '../state/settings';
@@ -32,7 +33,7 @@ export function ErrorState({ error, service, title, onRetry, other, autoFocus = 
   const text = onFeature ? c.featureText : c.text;
   const muted = onFeature ? c.featureMuted : c.textMuted;
 
-  let { title: heading, body, detail } = explain(error, service, title);
+  let { title: heading, body, detail } = explain(error, service, title, deviceKind());
   // A blocked VPN or proxy explains every failure at once.
   if (status.state === 'error') {
     heading = "Viu's VPN or proxy isn't connected";

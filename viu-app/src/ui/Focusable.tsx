@@ -1,10 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Animated, Easing, type HostInstance, Platform, Pressable, StyleProp, View, ViewStyle } from 'react-native';
+import { AccessibilityRole, Animated, Easing, type HostInstance, Platform, Pressable, StyleProp, View, ViewStyle } from 'react-native';
 
 import { noteKeyFocus, useInputMode } from '../lib/inputMode';
 import { useReduceMotion } from '../lib/useReduceMotion';
 import { useTheme } from '../state/settings';
 import { CornerBrackets } from './Shapes';
+import { useStage } from './Stage';
 import { useSurface } from './Surface';
 
 interface Props {
@@ -25,6 +26,9 @@ interface Props {
   disabled?: boolean;
   // False takes it out of D-pad focus entirely, such as hidden player controls.
   focusable?: boolean;
+  // What a screen reader calls it: a tab, one choice of several, or plain
+  // text that a remote can still land on. A button unless said otherwise.
+  role?: AccessibilityRole;
   accessibilityLabel?: string;
   accessibilityHint?: string;
   children: React.ReactNode | ((focused: boolean) => React.ReactNode);
@@ -40,6 +44,9 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const nativeDriver = Platform.OS !== 'web';
 const LIFT = 1.06;
 const DURATION = 160;
+// Off the TV the canvas shrinks by up to a third, so touch targets reach past
+// what's drawn: a 56 px chip or button still gets a 48 dp finger target.
+const TOUCH_SLOP = 10;
 
 // The one place that decides what "focused" looks like. Every interactive
 // element goes through here so both themes and both platforms stay consistent.
@@ -57,6 +64,7 @@ export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
     selected,
     disabled,
     focusable = true,
+    role = 'button',
     accessibilityLabel,
     accessibilityHint,
     children,
@@ -65,6 +73,7 @@ export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
 ) {
   const theme = useTheme();
   const surface = useSurface();
+  const touch = useStage().mode === 'flow';
   const reduceMotion = useReduceMotion();
   const [hasFocus, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -127,7 +136,8 @@ export const Focusable = forwardRef<FocusableHandle, Props>(function Focusable(
       ref={inner}
       {...tvProps}
       focusable={focusable}
-      accessibilityRole="button"
+      hitSlop={touch ? TOUCH_SLOP : undefined}
+      accessibilityRole={role}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ selected, disabled }}

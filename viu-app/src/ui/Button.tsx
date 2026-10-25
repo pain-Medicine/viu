@@ -30,7 +30,7 @@ interface Props {
 const SIZES = {
   lg: { h: 76, pad: 36, font: 26, icon: 26 },
   md: { h: 64, pad: 28, font: 22, icon: 24 },
-  sm: { h: 56, pad: 22, font: 20, icon: 22 },
+  sm: { h: 56, pad: 22, font: 22, icon: 22 },
 };
 
 export const Button = forwardRef<FocusableHandle, Props>(function Button(

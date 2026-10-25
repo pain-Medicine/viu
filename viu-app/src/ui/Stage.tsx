@@ -81,6 +81,14 @@ export function gridColumns(gridWidth: number, cardWidth: number, gap = 24): num
   return Math.max(1, Math.floor((gridWidth - 28 + gap) / (cardWidth + gap)));
 }
 
+// The gap between columns that spreads them across the whole grid width,
+// so a grid doesn't leave a ragged strip on the right. Never less than `gap`.
+export function gridGap(gridWidth: number, cardWidth: number, gap = 24): number {
+  const cols = gridColumns(gridWidth, cardWidth, gap);
+  if (cols < 2) return gap;
+  return Math.max(gap, Math.floor((gridWidth - 28 - cols * cardWidth) / (cols - 1)));
+}
+
 // Poster cards shrink on short screens, so a grid shows more than one row.
 export function useCardSize(width: number, height: number) {
   const { short } = useStage();
