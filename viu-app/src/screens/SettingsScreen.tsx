@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { useNav } from '../nav/navigation';
+import { providerFor } from '../providers';
 import { useAccount } from '../state/account';
 import { checkExitAddress, useNetwork, wgEndpoint } from '../state/network';
 import { useSettings } from '../state/settings';
@@ -59,6 +60,15 @@ export function SettingsScreen() {
         <Section label="Playback" index="02">
           <View style={{ gap: 20 }}>
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              <Chip label="AllAnime" selected={settings.provider === 'allanime'} onPress={() => update({ provider: 'allanime' })} />
+              <Chip label="AnimeUnity" selected={settings.provider === 'animeunity'} onPress={() => update({ provider: 'animeunity' })} />
+              {note(
+                settings.provider === 'animeunity'
+                  ? 'AnimeUnity is Italian: subtitled means Italian subtitles, dubbed the Italian dub.'
+                  : 'Where episodes stream from. AllAnime has English subtitles and dubs.',
+              )}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <Chip label="Subtitled" selected={settings.translation === 'sub'} onPress={() => update({ translation: 'sub' })} />
               <Chip label="Dubbed" selected={settings.translation === 'dub'} onPress={() => update({ translation: 'dub' })} />
               <Chip label="Raw" selected={settings.translation === 'raw'} onPress={() => update({ translation: 'raw' })} />
@@ -75,12 +85,14 @@ export function SettingsScreen() {
               ))}
               {note('Plays first when a server has it.')}
             </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              {SERVERS.map(([id, label]) => (
-                <Chip key={id} label={label} selected={settings.server === id} onPress={() => update({ server: id })} />
-              ))}
-              {note('Tried first. Top uses the first server that works.')}
-            </View>
+            {settings.provider === 'allanime' && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+                {SERVERS.map(([id, label]) => (
+                  <Chip key={id} label={label} selected={settings.server === id} onPress={() => update({ server: id })} />
+                ))}
+                {note('Tried first. Top uses the first server that works.')}
+              </View>
+            )}
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <Chip label="Stop at the end" selected={!settings.autoNext} onPress={() => update({ autoNext: false })} />
               <Chip label="Play the next episode" selected={settings.autoNext} onPress={() => update({ autoNext: true })} />
@@ -144,7 +156,7 @@ export function SettingsScreen() {
               bottom of the page and scroll it into view. */}
           <Focusable lift={false} role="text" radius={theme.shape.radiusSm} style={{ alignSelf: 'flex-start' }}>
             <Text color={c.textMuted} style={{ paddingVertical: 4, paddingRight: 8 }}>
-              {`Viu 1.0  ·  Metadata from AniList  ·  Streams from AllAnime  ·  Skip times from AniSkip`}
+              {`Viu 1.0  ·  Metadata from AniList  ·  Streams from ${providerFor(settings.provider).name}  ·  Skip times from AniSkip`}
               {Platform.OS === 'web' ? `  ·  ${proxy ? 'Provider proxy on' : 'No provider proxy, so streaming is off in the browser'}` : ''}
             </Text>
           </Focusable>

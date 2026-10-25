@@ -19,7 +19,9 @@ export const DEFAULT_PORT = 8787;
 
 // Only the provider's hosts, so this can't be used to reach anything else.
 // fast4speed.rsvp serves the Yt-mp4 source, which wants AllAnime's Referer.
-const ALLOWED_HOSTS = ['api.mkissa.net', 'allanime.day', 'mp4upload.com', 'fast4speed.rsvp'];
+// animeunity.co and vixcloud.cc are AnimeUnity's site and player pages; its
+// videos (vix-content.net) load directly.
+const ALLOWED_HOSTS = ['api.mkissa.net', 'allanime.day', 'mp4upload.com', 'fast4speed.rsvp', 'animeunity.co', 'vixcloud.cc'];
 
 export function isAllowed(target) {
   let url;
@@ -40,7 +42,7 @@ const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': '*',
   'access-control-allow-methods': 'GET, POST, HEAD, OPTIONS',
-  'access-control-expose-headers': 'content-length, content-range, accept-ranges',
+  'access-control-expose-headers': 'content-length, content-range, accept-ranges, x-set-cookie',
 };
 
 const PASS_BACK = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag'];
@@ -84,7 +86,7 @@ async function handle(req, res) {
   const target = query.get('url');
   if (!target || !isAllowed(target)) {
     res.writeHead(403, { ...CORS, 'content-type': 'text/plain' });
-    return res.end('This proxy only forwards to the AllAnime and mp4upload hosts.');
+    return res.end('This proxy only forwards to the streaming providers’ hosts.');
   }
 
   const headers = { 'user-agent': USER_AGENT };
@@ -118,6 +120,10 @@ async function handle(req, res) {
     const value = upstream.headers.get(name);
     if (value) out[name] = value;
   }
+  // Browsers never show a page Set-Cookie, and AnimeUnity's search needs its
+  // session cookie back, so it comes back under another name.
+  const cookies = upstream.headers.getSetCookie?.() ?? [];
+  if (cookies.length) out['x-set-cookie'] = cookies.join(', ');
   res.writeHead(upstream.status, out);
   if (!upstream.body || req.method === 'HEAD') return res.end();
   const stream = Readable.fromWeb(upstream.body);

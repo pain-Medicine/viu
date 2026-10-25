@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import type { TranslationType } from '../providers/types';
+import type { ProviderId, TranslationType } from '../providers/types';
 import { setWatchedAt } from './progress';
 import { DEFAULT_THEME, themes } from '../theme/themes';
 import type { Theme, ThemeId } from '../theme/types';
@@ -14,6 +14,8 @@ export type Tracking = 'off' | 'prompt' | 'auto';
 // (viu_media/core/config/model.py) and its defaults.
 export interface Settings {
   themeId: ThemeId;
+  // general.provider: where streams come from.
+  provider: ProviderId;
   translation: TranslationType;
   // Jump past intros, recaps and credits without asking.
   autoSkip: boolean;
@@ -36,6 +38,8 @@ export interface Settings {
 
 const DEFAULTS: Settings = {
   themeId: DEFAULT_THEME,
+  // AllAnime: the only one with English subtitles and dubs.
+  provider: 'allanime',
   translation: 'sub',
   autoSkip: false,
   quality: '1080',

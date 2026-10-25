@@ -10,7 +10,7 @@ import { SkipInterval, skipTimes } from '../api/aniskip';
 import { type AsyncState, useAsync } from '../lib/useAsync';
 import { useReduceMotion } from '../lib/useReduceMotion';
 import { useNav, useScreenActive } from '../nav/navigation';
-import { type EpisodeStreams, findShow, playableUrl, provider, type ProviderAnime, showKey, TranslationType } from '../providers';
+import { type EpisodeStreams, findShow, playableUrl, providerFor, type ProviderAnime, showKey, TranslationType } from '../providers';
 import { attachHls, needsHlsJs } from '../lib/hls';
 import { preferQuality } from '../providers/quality';
 import { useAccount } from '../state/account';
@@ -68,12 +68,13 @@ export function PlayerScreen({ mediaId, episode, translation }: PlayerProps) {
   const { settings } = useSettings();
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
   // Usually already cached by the details page.
-  const show = useAsync(media.data ? showKey(mediaId, translation) : null, () => findShow(media.data!, translation));
+  const source = settings.provider;
+  const show = useAsync(media.data ? showKey(source, mediaId, translation) : null, () => findShow(media.data!, translation, source));
   const showId = show.data?.id;
   // Only the first server that works is fetched here (the terminal's TOP
   // server, or the preferred one); the others when they're needed.
-  const streams = useAsync(showId ? `streams:${showId}:${episode}:${translation}` : null, () =>
-    provider.episodeStreams(showId!, episode, translation, settings.server),
+  const streams = useAsync(showId ? `streams:${source}:${showId}:${episode}:${translation}` : null, () =>
+    providerFor(source).episodeStreams(showId!, episode, translation, settings.server),
   );
   // Counts servers found later, so the options are worked out again.
   const [, setFound] = useState(0);
@@ -151,6 +152,7 @@ function Playback({
   const history = useHistory();
   const syncProgress = useProgressSync();
   const { account } = useAccount();
+  const sourceName = providerFor(settings.provider).name;
 
   // HLS the browser can't play itself goes through hls.js, so the player
   // gets no source of its own and hls.js feeds its <video>.
@@ -410,7 +412,9 @@ function Playback({
 
   const m = media.data;
   const notListed =
-    show.data === null ? new Error(`AllAnime doesn’t list this title with ${translation === 'dub' ? 'a dub' : 'subtitles'}.`) : undefined;
+    show.data === null
+      ? new Error(`${sourceName} doesn’t list this title ${translation === 'dub' ? 'with a dub' : translation === 'raw' ? 'raw' : 'with subtitles'}.`)
+      : undefined;
   const error = media.error ?? show.error ?? notListed ?? streams.error ?? playError;
   const retry = media.error
     ? media.retry
@@ -484,7 +488,7 @@ function Playback({
             {error ? (
               <ErrorState
                 error={error}
-                service="AllAnime"
+                service={sourceName}
                 title="Can’t play this episode"
                 onRetry={retry}
                 other={{ label: 'Back', onPress: nav.back }}

@@ -4,7 +4,7 @@ import { ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-nat
 import { airedEpisodes, displayTitle, getMedia, Media, plainDescription } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
-import { chooseShow, findShow, ProviderUnavailableError, searchCandidates, showKey, TRANSLATIONS, TranslationType } from '../providers';
+import { chooseShow, findShow, providerFor, ProviderUnavailableError, searchCandidates, showKey, TRANSLATIONS, TranslationType } from '../providers';
 import { episodeProgress, HistoryEntry, isWatched, progressOf, upNext, useHistory } from '../state/history';
 import { useListMembership } from '../state/mylist';
 import { useSettings } from '../state/settings';
@@ -45,11 +45,13 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
   const media = useAsync(`media:${mediaId}`, () => getMedia(mediaId));
   const membership = useListMembership(mediaId);
   const [translation, setTranslation] = useState<TranslationType>(settings.translation);
-  const show = useAsync(media.data ? showKey(mediaId, translation) : null, () => findShow(media.data!, translation));
+  const source = settings.provider;
+  const sourceName = providerFor(source).name;
+  const show = useAsync(media.data ? showKey(source, mediaId, translation) : null, () => findShow(media.data!, translation, source));
   // "Wrong show?": the search results to pick the right one from.
   const [picking, setPicking] = useState(false);
-  const candidates = useAsync(picking && media.data ? `candidates:${mediaId}:${translation}` : null, () =>
-    searchCandidates(media.data!, translation),
+  const candidates = useAsync(picking && media.data ? `candidates:${source}:${mediaId}:${translation}` : null, () =>
+    searchCandidates(media.data!, translation, source),
   );
 
   // Episode names from the provider, or a count from AniList when the
@@ -252,13 +254,13 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
         {picking && (
           <View style={{ flex: 1, gap: 14, paddingTop: 4 }}>
             <Text variant="item" color={c.featureText}>
-              Which AllAnime show is this?
+              {`Which ${sourceName} show is this?`}
             </Text>
-            {candidates.loading && <Text color={c.featureMuted}>Searching AllAnime…</Text>}
+            {candidates.loading && <Text color={c.featureMuted}>{`Searching ${sourceName}…`}</Text>}
             {candidates.error && (
-              <ErrorState compact autoFocus={false} error={candidates.error} service="AllAnime" title="Couldn’t search AllAnime" onRetry={candidates.retry} />
+              <ErrorState compact autoFocus={false} error={candidates.error} service={sourceName} title={`Couldn’t search ${sourceName}`} onRetry={candidates.retry} />
             )}
-            {candidates.data && !candidates.data.length && <Text color={c.featureMuted}>AllAnime found nothing under this title.</Text>}
+            {candidates.data && !candidates.data.length && <Text color={c.featureMuted}>{`${sourceName} found nothing under this title.`}</Text>}
             <ScrollView style={{ flexGrow: 0, flexShrink: 1, marginHorizontal: -10 }} contentContainerStyle={{ gap: 8, padding: 10, alignItems: 'flex-start' }}>
               {candidates.data?.map((r, i) => (
                 <Chip
@@ -268,7 +270,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
                   selected={show.data?.id === r.id}
                   label={`${r.title}  ·  ${countLabel(r.episodes[translation], 'episode')}`}
                   onPress={async () => {
-                    await chooseShow(m, r);
+                    await chooseShow(m, r, source);
                     setPicking(false);
                     show.retry();
                   }}
@@ -282,11 +284,11 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
         {notFound && !picking && (
           <View style={{ flex: 1, gap: 14, paddingTop: 12 }}>
             <Text variant="item" color={c.featureText}>
-              {`No ${TRANSLATION_LABELS[translation].noun} on AllAnime`}
+              {`No ${TRANSLATION_LABELS[translation].noun} on ${sourceName}`}
             </Text>
             <Text
               color={c.featureMuted}
-            >{`AllAnime doesn’t list this title ${TRANSLATION_LABELS[translation].as}. The ${otherLabel.toLowerCase()} may be there.`}</Text>
+            >{`${sourceName} doesn’t list this title ${TRANSLATION_LABELS[translation].as}. The ${otherLabel.toLowerCase()} may be there.`}</Text>
           </View>
         )}
 
@@ -296,7 +298,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
               compact
               autoFocus={false}
               error={show.error}
-              service="AllAnime"
+              service={sourceName}
               title="Couldn’t find streams"
               onRetry={show.retry}
             />
@@ -357,7 +359,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
           <Text variant="note" color={c.featureMuted} style={{ flex: 1 }}>
-            {status ?? (showRows ? `Streams from AllAnime  ·  ${countLabel(episodes.length, 'episode')}` : 'Streams from AllAnime')}
+            {status ?? (showRows ? `Streams from ${sourceName}  ·  ${countLabel(episodes.length, 'episode')}` : `Streams from ${sourceName}`)}
           </Text>
           {!picking && !unavailable && !show.loading && (
             <Chip size="sm" label="Wrong show?" accessibilityLabel="Wrong show? Choose another" onPress={() => setPicking(true)} />

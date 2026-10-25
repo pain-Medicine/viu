@@ -3,6 +3,9 @@
 export type TranslationType = 'sub' | 'dub' | 'raw';
 export const TRANSLATIONS: TranslationType[] = ['sub', 'dub', 'raw'];
 
+// The streaming sources the app can use; the terminal's ProviderName.
+export type ProviderId = 'allanime' | 'animeunity';
+
 export interface ProviderSearchResult {
   id: string;
   title: string;

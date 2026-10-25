@@ -4,7 +4,7 @@
 // viu_media/assets/normalizer.json, and the pure Python ratios in
 // viu_media/core/utils/fuzzy.py. Keep them in step with the terminal.
 import { airedEpisodes, type Media } from '../api/anilist';
-import type { ProviderSearchResult } from './types';
+import type { ProviderId, ProviderSearchResult } from './types';
 
 // Provider titles that don't look like the AniList title at all, from the
 // "allanime" section of normalizer.json: provider title -> AniList title.
@@ -19,21 +19,34 @@ export const ALLANIME_TITLES: Record<string, string> = {
   'Hanka×Hanka (2011)': 'Hunter × Hunter (2011)',
 };
 
-// The viewer's own mappings, picked with "Wrong show?" on a title's page: the
-// terminal's user normalizer.json, which overrides the built-in one.
-let userTitles: Record<string, string> = {};
-export const getUserTitles = () => userTitles;
-export const setUserTitles = (titles: Record<string, string>) => {
-  userTitles = titles;
+// normalizer.json's "animeunity" section.
+export const ANIMEUNITY_TITLES: Record<string, string> = {
+  'Kaiju No. 8': 'Kaiju No.8',
+  'Naruto Shippuden': 'Naruto: Shippuden',
+  'Psycho-Pass: Sinners of the System Case.1 - Crime and Punishment': 'PSYCHO-PASS Sinners of the System: Case.1 Crime and Punishment',
+  'Psycho-Pass: Sinners of the System Case.2 - First Guardian': 'PSYCHO-PASS Sinners of the System: Case.2 First Guardian',
+  'Psycho-Pass: Sinners of the System Case.3 - On the Other Side of Love and Hate':
+    'PSYCHO-PASS Sinners of the System: Case.3 Beyond the Pale of Vengeance',
 };
-const titles = () => ({ ...ALLANIME_TITLES, ...userTitles });
 
-export const providerTitleToMediaTitle = (title: string) => titles()[title] ?? title;
+const PROVIDER_TITLES: Record<ProviderId, Record<string, string>> = { allanime: ALLANIME_TITLES, animeunity: ANIMEUNITY_TITLES };
+
+// The viewer's own mappings, picked with "Wrong show?" on a title's page: the
+// terminal's user normalizer.json, which overrides the built-in one, per
+// provider.
+let userTitles: Partial<Record<ProviderId, Record<string, string>>> = {};
+export const getUserTitles = (provider: ProviderId = 'allanime') => userTitles[provider] ?? {};
+export const setUserTitles = (titles: Record<string, string>, provider: ProviderId = 'allanime') => {
+  userTitles = { ...userTitles, [provider]: titles };
+};
+const titles = (provider: ProviderId) => ({ ...PROVIDER_TITLES[provider], ...getUserTitles(provider) });
+
+export const providerTitleToMediaTitle = (title: string, provider: ProviderId = 'allanime') => titles(provider)[title] ?? title;
 
 // Case-sensitive, as in the terminal: "ONE PIECE" is searched as such, since
 // AllAnime's search finds nothing for "1P" itself.
-export function mediaTitleToProviderTitle(title: string): string {
-  for (const [provider, media] of Object.entries(titles())) if (media === title) return provider;
+export function mediaTitleToProviderTitle(title: string, provider: ProviderId = 'allanime'): string {
+  for (const [name, media] of Object.entries(titles(provider))) if (media === title) return name;
   return title;
 }
 
@@ -87,7 +100,7 @@ const bare = (s: string) =>
 // Scores every result on its title (fuzzy, against every AniList title and
 // synonym) plus how close its episode count is to what has aired, so spin-offs,
 // movies and recaps that share the name lose to the series itself.
-export function findBestMatch(results: ProviderSearchResult[], media: Media): ProviderSearchResult | null {
+export function findBestMatch(results: ProviderSearchResult[], media: Media, provider: ProviderId = 'allanime'): ProviderSearchResult | null {
   if (!results.length) return null;
   const validTitles = [media.title.english, media.title.romaji, media.title.native, ...media.synonyms]
     .filter((t): t is string => !!t)
@@ -103,14 +116,14 @@ export function findBestMatch(results: ProviderSearchResult[], media: Media): Pr
   // The viewer's own pick wins even over another exact title, or "Wrong
   // show?" couldn't fix a show that shares its name.
   for (const [title, result] of byTitle) {
-    const picked = userTitles[title]?.toLowerCase();
+    const picked = getUserTitles(provider)[title]?.toLowerCase();
     if (picked && validTitles.includes(picked)) return result;
   }
 
   let best: ProviderSearchResult | null = null;
   let highest = -9999;
   for (const [title, result] of byTitle) {
-    const normTitle = providerTitleToMediaTitle(title).toLowerCase();
+    const normTitle = providerTitleToMediaTitle(title, provider).toLowerCase();
     if (validTitles.includes(normTitle) || validBare.has(bare(normTitle))) return result;
 
     const episodes = Math.max(result.episodes.sub, result.episodes.dub, result.episodes.raw);
@@ -143,8 +156,8 @@ export function findBestMatch(results: ProviderSearchResult[], media: Media): Pr
 // What the terminal searches for: the English title (else romaji) under the
 // name the provider uses, lowercased; then the synonyms if that finds nothing.
 // The romaji title goes before the synonyms, as the app searched it before.
-export function searchQueries(media: Media): string[] {
+export function searchQueries(media: Media, provider: ProviderId = 'allanime'): string[] {
   const main = media.title.english || media.title.romaji;
-  const queries = [main, media.title.romaji, ...media.synonyms].filter((t): t is string => !!t).map((t) => mediaTitleToProviderTitle(t).toLowerCase());
+  const queries = [main, media.title.romaji, ...media.synonyms].filter((t): t is string => !!t).map((t) => mediaTitleToProviderTitle(t, provider).toLowerCase());
   return [...new Set(queries)];
 }

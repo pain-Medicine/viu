@@ -12,6 +12,7 @@ import { CLIENT_EPOCH_MS } from '../src/providers/allanime/constants';
 import { AllAnimeKeys } from '../src/providers/allanime/keys';
 import { AllAnimeProvider, episodeQueryError, RateLimitError, wixmpLinks } from '../src/providers/allanime/provider';
 import { preferQuality } from '../src/providers/quality';
+import { AnimeUnityProvider, isVixcloudUrl, vixcloudServer } from '../src/providers/animeunity/provider';
 import { findBestMatch, ratio, searchQueries, setUserTitles, tokenSetRatio } from '../src/providers/match';
 import { applyNetwork, BLOCKED, type NetworkSettings } from '../src/state/networkModes';
 import { episodeProgress, type HistoryEntry, upNext } from '../src/state/progress';
@@ -234,6 +235,83 @@ describe('AllAnime servers', () => {
     const links = [{ url: 'a', quality: '1080' }, { url: 'b', quality: '720' }, { url: 'c', quality: 'auto' }];
     assert.deepEqual(preferQuality(links, '720').map((l) => l.url), ['b', 'a', 'c']);
     assert.deepEqual(preferQuality(links, '360').map((l) => l.url), ['a', 'b', 'c']);
+  });
+});
+
+describe('AnimeUnity', () => {
+  // Shapes recorded from www.animeunity.co and vixcloud.cc on 2026-10-25,
+  // with the tokens replaced.
+  const record = (id: number, dub: number, title: string) => ({
+    id,
+    dub,
+    title,
+    title_eng: `${title} (ENG)`,
+    title_it: null,
+    episodes_count: 28,
+    real_episodes_count: 28,
+  });
+  const player = (link: string) => `<script>window.video = { id: '224978', filename: '', timestamps: [] }
+        window.downloadUrl = '${link}'
+        window.masterPlaylist = { params: { 'token': 'x', 'expires': '1' }, url: 'https://vixcloud.cc/playlist/224978' }</script>`;
+  const mp4 = 'https://au-d1-01.vix-content.net/download/1/c/2c/abc/1080p.mp4?token=t&expires=1&filename=Frieren_Ep_01_SUB_ITA.mp4';
+
+  it('reads the mp4 from the vixcloud page, at each quality up to its own', () => {
+    const server = vixcloudServer(player(mp4), 'Frieren - Ep 1');
+    assert.deepEqual(server?.links.map((l) => [l.quality, l.url.split('/').pop()?.split('?')[0]]), [
+      ['1080', '1080p.mp4'],
+      ['720', '720p.mp4'],
+      ['480', '480p.mp4'],
+    ]);
+    assert.deepEqual(server?.headers, {});
+  });
+
+  it('only trusts vixcloud players and vix-content videos', () => {
+    assert.ok(isVixcloudUrl('https://vixcloud.cc/embed/224978?token=x'));
+    assert.ok(!isVixcloudUrl('https://vixcloud.cc.evil.example/embed/1'));
+    assert.ok(!isVixcloudUrl('http://vixcloud.cc/embed/1'));
+    assert.equal(vixcloudServer(player('https://evil.example/1080p.mp4'), null), null);
+    assert.equal(vixcloudServer('<html>no player</html>', null), null);
+  });
+
+  it('searches with the page token and session, sub and dub apart, and plays an episode', async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === 'https://www.animeunity.co') {
+        return new Response('<meta name="csrf-token" content="TOKEN">', {
+          headers: { 'x-set-cookie': 'XSRF-TOKEN=x1; expires=Sun, 25 Oct 2026 21:00:00 GMT; path=/, animeunity_session=s1; path=/; httponly' },
+        });
+      }
+      if (url.endsWith('/livesearch')) return new Response(JSON.stringify({ records: [record(4851, 0, 'Sousou no Frieren'), record(4852, 1, 'Sousou no Frieren (ITA)')] }));
+      if (url.includes('/info_api/4851/1?')) return new Response(JSON.stringify({ episodes: [{ id: 74008, number: '1' }, { id: 74009, number: '2' }] }));
+      if (url.endsWith('/embed-url/74008')) return new Response('https://vixcloud.cc/embed/224978?token=x&expires=1');
+      if (url.startsWith('https://vixcloud.cc/embed/')) return new Response(player(mp4));
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    const unity = new AnimeUnityProvider(fetchFn);
+    const subs = await unity.search('Frieren Season 2', 'sub');
+    assert.deepEqual(subs.map((r) => [r.id, r.episodes]), [['4851', { sub: 28, dub: 0, raw: 0 }]]);
+    const post = calls.find((c) => c.url.endsWith('/livesearch'))!;
+    const headers = post.init?.headers as Record<string, string>;
+    assert.equal(headers['x-csrf-token'], 'TOKEN');
+    assert.equal(headers.Cookie, 'XSRF-TOKEN=x1; animeunity_session=s1');
+    assert.equal(post.init?.body, 'title=Frieren%202');
+    assert.deepEqual((await unity.search('Frieren', 'dub')).map((r) => r.id), ['4852']);
+    assert.deepEqual(await unity.search('Frieren', 'raw'), []);
+    const show = await unity.get('4851');
+    assert.deepEqual(show?.episodes, { sub: ['1', '2'], dub: [], raw: [] });
+    const { servers } = await unity.episodeStreams('4851', '1');
+    assert.equal(servers[0].name, 'vixcloud');
+    assert.match(servers[0].links[0].url, /vix-content\.net\/.*1080p\.mp4/);
+  });
+
+  it('maps titles with the terminal\'s animeunity normalizer', () => {
+    const naruto = { title: { romaji: 'Naruto: Shippuuden', english: 'Naruto: Shippuden', native: null, userPreferred: '' }, synonyms: [], episodes: 500, nextAiringEpisode: null } as unknown as Media;
+    const results = [
+      { id: 'a', title: 'Naruto', episodes: { sub: 220, dub: 0, raw: 0 } },
+      { id: 'b', title: 'Naruto Shippuden', episodes: { sub: 500, dub: 0, raw: 0 } },
+    ];
+    assert.equal(findBestMatch(results, naruto, 'animeunity')?.id, 'b');
   });
 });
 

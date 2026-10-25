@@ -13,6 +13,8 @@ describe('isAllowed', () => {
     assert.ok(isAllowed('https://api.mkissa.net/client-crypto/v1/bootstrap?buildId=181&k=k7'));
     assert.ok(isAllowed('https://allanime.day/apivtwo/clock.json?id=7d24'));
     assert.ok(isAllowed('https://tools.fast4speed.rsvp/media/x.mp4'));
+    assert.ok(isAllowed('https://www.animeunity.co/livesearch'));
+    assert.ok(isAllowed('https://vixcloud.cc/embed/224978?token=x'));
     assert.ok(isAllowed('https://www.mp4upload.com/embed-abc.html'));
     assert.ok(isAllowed('https://a2.mp4upload.com:183/d/xyz/video.mp4'));
   });
