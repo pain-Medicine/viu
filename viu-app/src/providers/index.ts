@@ -1,8 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import { type Media } from '../api/anilist';
 import { AllAnimeProvider } from './allanime/provider';
-import { findBestMatch, searchQueries } from './match';
+import { findBestMatch, getUserTitles, searchQueries, setUserTitles } from './match';
 import { AnimeProvider, ProviderAnime, ProviderSearchResult, ProviderUnavailableError, TranslationType } from './types';
 
 export * from './types';
@@ -47,11 +48,41 @@ export async function matchProviderShow(
   media: Media,
   translation: TranslationType,
 ): Promise<ProviderSearchResult | null> {
+  return findBestMatch(await searchCandidates(media, translation), media);
+}
+
+// The results of the first search that finds anything, as the terminal
+// offers them when it doesn't pick one itself (provider_search.py).
+export async function searchCandidates(media: Media, translation: TranslationType): Promise<ProviderSearchResult[]> {
+  await loadUserTitles();
   for (const q of searchQueries(media)) {
     const results = await provider.search(q, translation);
-    if (results.length) return findBestMatch(results, media);
+    if (results.length) return results;
   }
-  return null;
+  return [];
+}
+
+const USER_TITLES_KEY = 'viu.normalizer.v1';
+let userTitlesLoaded: Promise<void> | null = null;
+function loadUserTitles(): Promise<void> {
+  userTitlesLoaded ??= AsyncStorage.getItem(USER_TITLES_KEY)
+    .then((raw) => {
+      if (raw) setUserTitles(JSON.parse(raw) as Record<string, string>);
+    })
+    .catch(() => {});
+  return userTitlesLoaded;
+}
+
+// Remembers the viewer's pick of provider show for an AniList title, like
+// update_user_normalizer_json: provider title -> the AniList title it was
+// searched for, lowercased. The matcher then takes it outright.
+export async function chooseShow(media: Media, choice: ProviderSearchResult): Promise<void> {
+  await loadUserTitles();
+  const mediaTitle = media.title.english || media.title.romaji;
+  if (!mediaTitle) return;
+  const next = { ...getUserTitles(), [choice.title]: mediaTitle.toLowerCase() };
+  setUserTitles(next);
+  await AsyncStorage.setItem(USER_TITLES_KEY, JSON.stringify(next)).catch(() => {});
 }
 
 // The provider's show for an AniList title, with its episode list. The

@@ -12,7 +12,7 @@ import { CLIENT_EPOCH_MS } from '../src/providers/allanime/constants';
 import { AllAnimeKeys } from '../src/providers/allanime/keys';
 import { AllAnimeProvider, episodeQueryError, RateLimitError, wixmpLinks } from '../src/providers/allanime/provider';
 import { preferQuality } from '../src/providers/quality';
-import { findBestMatch, ratio, searchQueries, tokenSetRatio } from '../src/providers/match';
+import { findBestMatch, ratio, searchQueries, setUserTitles, tokenSetRatio } from '../src/providers/match';
 import { applyNetwork, BLOCKED, type NetworkSettings } from '../src/state/networkModes';
 import { episodeProgress, type HistoryEntry, upNext } from '../src/state/progress';
 
@@ -267,6 +267,22 @@ describe('findBestMatch', () => {
       result('ReHMC7TQnch3C6z8j', 'Sousou no Frieren', 28, 28),
     ];
     assert.equal(findBestMatch(frieren, media('Sousou no Frieren', 'Frieren: Beyond Journey’s End', 28, null))?.id, 'ReHMC7TQnch3C6z8j');
+  });
+
+  it('takes the viewer\'s own pick first, and searches under it', () => {
+    const aot = [
+      result('wbnpCxPu3fyk9XSaZ', 'Shingeki no Kyojin', 27, 25),
+      result('C9d6MjbQk3ddHAZnD', 'Shingeki no Kyojin OVA', 8, 3),
+    ];
+    const titan = media('Shingeki no Kyojin', 'Attack on Titan', 25, null);
+    try {
+      setUserTitles({ 'Shingeki no Kyojin OVA': 'attack on titan' });
+      assert.equal(findBestMatch(aot, titan)?.id, 'C9d6MjbQk3ddHAZnD');
+      assert.equal(searchQueries(titan)[0], 'attack on titan');
+    } finally {
+      setUserTitles({});
+    }
+    assert.equal(findBestMatch(aot, titan)?.id, 'wbnpCxPu3fyk9XSaZ');
   });
 
   it('scores like the terminal\'s pure Python fuzz', () => {

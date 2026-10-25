@@ -19,10 +19,21 @@ export const ALLANIME_TITLES: Record<string, string> = {
   'Hanka×Hanka (2011)': 'Hunter × Hunter (2011)',
 };
 
-export const providerTitleToMediaTitle = (title: string) => ALLANIME_TITLES[title] ?? title;
+// The viewer's own mappings, picked with "Wrong show?" on a title's page: the
+// terminal's user normalizer.json, which overrides the built-in one.
+let userTitles: Record<string, string> = {};
+export const getUserTitles = () => userTitles;
+export const setUserTitles = (titles: Record<string, string>) => {
+  userTitles = titles;
+};
+const titles = () => ({ ...ALLANIME_TITLES, ...userTitles });
 
+export const providerTitleToMediaTitle = (title: string) => titles()[title] ?? title;
+
+// Case-sensitive, as in the terminal: "ONE PIECE" is searched as such, since
+// AllAnime's search finds nothing for "1P" itself.
 export function mediaTitleToProviderTitle(title: string): string {
-  for (const [provider, media] of Object.entries(ALLANIME_TITLES)) if (media === title) return provider;
+  for (const [provider, media] of Object.entries(titles())) if (media === title) return provider;
   return title;
 }
 
@@ -88,6 +99,13 @@ export function findBestMatch(results: ProviderSearchResult[], media: Media): Pr
   // Same title twice keeps the last one, like the terminal's title map.
   const byTitle = new Map<string, ProviderSearchResult>();
   for (const r of results) byTitle.set(r.title, r);
+
+  // The viewer's own pick wins even over another exact title, or "Wrong
+  // show?" couldn't fix a show that shares its name.
+  for (const [title, result] of byTitle) {
+    const picked = userTitles[title]?.toLowerCase();
+    if (picked && validTitles.includes(picked)) return result;
+  }
 
   let best: ProviderSearchResult | null = null;
   let highest = -9999;

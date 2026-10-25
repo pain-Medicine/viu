@@ -4,7 +4,7 @@ import { ScrollView, type ScrollViewInstance, StyleSheet, View } from 'react-nat
 import { airedEpisodes, displayTitle, getMedia, Media, plainDescription } from '../api/anilist';
 import { useAsync } from '../lib/useAsync';
 import { useNav } from '../nav/navigation';
-import { findShow, ProviderUnavailableError, showKey, TRANSLATIONS, TranslationType } from '../providers';
+import { chooseShow, findShow, ProviderUnavailableError, searchCandidates, showKey, TRANSLATIONS, TranslationType } from '../providers';
 import { episodeProgress, HistoryEntry, isWatched, progressOf, upNext, useHistory } from '../state/history';
 import { useListMembership } from '../state/mylist';
 import { useSettings } from '../state/settings';
@@ -46,6 +46,11 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
   const membership = useListMembership(mediaId);
   const [translation, setTranslation] = useState<TranslationType>(settings.translation);
   const show = useAsync(media.data ? showKey(mediaId, translation) : null, () => findShow(media.data!, translation));
+  // "Wrong show?": the search results to pick the right one from.
+  const [picking, setPicking] = useState(false);
+  const candidates = useAsync(picking && media.data ? `candidates:${mediaId}:${translation}` : null, () =>
+    searchCandidates(media.data!, translation),
+  );
 
   // Episode names from the provider, or a count from AniList when the
   // provider can't be reached (the web build without a proxy).
@@ -95,7 +100,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
   // Rows only for episodes that can play, except where streaming is off
   // altogether (the web build without a proxy), where the list still helps
   // browsing and the status line says why.
-  const showRows = !notFound && !(show.error && !unavailable);
+  const showRows = !picking && !notFound && !(show.error && !unavailable);
   const status = show.loading ? 'Finding streams…' : unavailable ? show.error!.message : null;
   const switchTranslation = (t: TranslationType) => {
     setTranslation(t);
@@ -244,7 +249,37 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           </View>
         </View>
 
-        {notFound && (
+        {picking && (
+          <View style={{ flex: 1, gap: 14, paddingTop: 4 }}>
+            <Text variant="item" color={c.featureText}>
+              Which AllAnime show is this?
+            </Text>
+            {candidates.loading && <Text color={c.featureMuted}>Searching AllAnime…</Text>}
+            {candidates.error && (
+              <ErrorState compact autoFocus={false} error={candidates.error} service="AllAnime" title="Couldn’t search AllAnime" onRetry={candidates.retry} />
+            )}
+            {candidates.data && !candidates.data.length && <Text color={c.featureMuted}>AllAnime found nothing under this title.</Text>}
+            <ScrollView style={{ flexGrow: 0, flexShrink: 1, marginHorizontal: -10 }} contentContainerStyle={{ gap: 8, padding: 10, alignItems: 'flex-start' }}>
+              {candidates.data?.map((r, i) => (
+                <Chip
+                  key={r.id}
+                  autoFocus={i === 0}
+                  check={show.data?.id === r.id}
+                  selected={show.data?.id === r.id}
+                  label={`${r.title}  ·  ${countLabel(r.episodes[translation], 'episode')}`}
+                  onPress={async () => {
+                    await chooseShow(m, r);
+                    setPicking(false);
+                    show.retry();
+                  }}
+                />
+              ))}
+            </ScrollView>
+            <Button size="sm" variant="outline" label="Cancel" style={{ alignSelf: 'flex-start' }} onPress={() => setPicking(false)} />
+          </View>
+        )}
+
+        {notFound && !picking && (
           <View style={{ flex: 1, gap: 14, paddingTop: 12 }}>
             <Text variant="item" color={c.featureText}>
               {`No ${TRANSLATION_LABELS[translation].noun} on AllAnime`}
@@ -255,7 +290,7 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           </View>
         )}
 
-        {show.error && !unavailable && (
+        {show.error && !unavailable && !picking && (
           <View style={{ flex: 1, paddingTop: 12 }}>
             <ErrorState
               compact
@@ -320,9 +355,14 @@ export function DetailsScreen({ mediaId }: { mediaId: number }) {
           </View>
         )}
 
-        <Text variant="note" color={c.featureMuted}>
-          {status ?? (showRows ? `Streams from AllAnime  ·  ${countLabel(episodes.length, 'episode')}` : 'Streams from AllAnime')}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+          <Text variant="note" color={c.featureMuted} style={{ flex: 1 }}>
+            {status ?? (showRows ? `Streams from AllAnime  ·  ${countLabel(episodes.length, 'episode')}` : 'Streams from AllAnime')}
+          </Text>
+          {!picking && !unavailable && !show.loading && (
+            <Chip size="sm" label="Wrong show?" accessibilityLabel="Wrong show? Choose another" onPress={() => setPicking(true)} />
+          )}
+        </View>
       </Panel>
     </View>
   );
