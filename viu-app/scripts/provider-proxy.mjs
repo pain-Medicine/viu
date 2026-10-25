@@ -15,6 +15,8 @@ import http from 'node:http';
 import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 
+import { Agent, fetch } from 'undici';
+
 export const DEFAULT_PORT = 8787;
 
 // Only the provider's hosts, so this can't be used to reach anything else.
@@ -49,13 +51,25 @@ const PASS_BACK = ['content-type', 'content-length', 'content-range', 'accept-ra
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// How long to wait for a connection, and how often to try. Video servers can
+// be slow to accept one (mp4upload has taken 26 seconds), so the player's
+// requests wait longer, once; API requests give up sooner and try again.
+export function connectPlan(video) {
+  return video ? { timeout: 45_000, tries: 1 } : { timeout: 10_000, tries: 3 };
+}
+const agents = {
+  api: new Agent({ connect: { timeout: connectPlan(false).timeout } }),
+  video: new Agent({ connect: { timeout: connectPlan(true).timeout } }),
+};
+
 // On some networks the first TLS connection to the API in a while fails and
 // the next one works, so a failed connection is tried again before giving up.
 // Only connection errors are retried; an HTTP error status is passed back.
-async function fetchWithRetry(url, init, tries = 3) {
+async function fetchWithRetry(url, init, video) {
+  const { tries } = connectPlan(video);
   for (let attempt = 1; ; attempt++) {
     try {
-      return await fetch(url, init);
+      return await fetch(url, { ...init, dispatcher: video ? agents.video : agents.api });
     } catch (err) {
       if (attempt >= tries) throw err;
       await sleep(250 * attempt);
@@ -64,10 +78,10 @@ async function fetchWithRetry(url, init, tries = 3) {
 }
 
 // Redirects are followed by hand so each hop is checked against the allowlist.
-async function forward(target, init) {
+async function forward(target, init, video) {
   let url = target;
   for (let hop = 0; hop < 5; hop++) {
-    const response = await fetchWithRetry(url, { ...init, redirect: 'manual' });
+    const response = await fetchWithRetry(url, { ...init, redirect: 'manual' }, video);
     const location = response.headers.get('location');
     if (response.status < 300 || response.status >= 400 || !location) return response;
     url = new URL(location, url).href;
@@ -108,7 +122,8 @@ async function handle(req, res) {
 
   let upstream;
   try {
-    upstream = await forward(target, { method: req.method, headers, body });
+    // The player's requests are the ones that come with a Referer parameter.
+    upstream = await forward(target, { method: req.method, headers, body }, !!referer);
   } catch (err) {
     console.error(`proxy: ${target}: ${err.cause?.message ?? err.message}`);
     res.writeHead(502, { ...CORS, 'content-type': 'text/plain' });

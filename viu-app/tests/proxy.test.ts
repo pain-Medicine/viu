@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import type { AddressInfo, Server } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 
-import { isAllowed, startProxy } from '../scripts/provider-proxy.mjs';
+import { connectPlan, isAllowed, startProxy } from '../scripts/provider-proxy.mjs';
 
 describe('isAllowed', () => {
   it('allows the AllAnime api and mp4upload hosts, any port', () => {
@@ -26,6 +26,13 @@ describe('isAllowed', () => {
     assert.ok(!isAllowed('https://user:pass@api.mkissa.net/api'));
     assert.ok(!isAllowed('http://127.0.0.1:8080/'));
     assert.ok(!isAllowed('not a url'));
+  });
+});
+
+describe('connectPlan', () => {
+  it('waits longer, once, for video servers, and retries the API sooner', () => {
+    assert.deepEqual(connectPlan(true), { timeout: 45_000, tries: 1 });
+    assert.deepEqual(connectPlan(false), { timeout: 10_000, tries: 3 });
   });
 });
 

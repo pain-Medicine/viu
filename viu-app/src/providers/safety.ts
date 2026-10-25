@@ -40,8 +40,9 @@ export function safeServer(server: StreamServer | null): StreamServer | null {
 }
 
 // fetch that gives up after `ms`, so a provider that never answers can't
-// leave a screen waiting forever.
-export function withTimeout(fetchFn: typeof fetch, ms = 20000): typeof fetch {
+// leave a screen waiting forever. Long enough for the web proxy's own three
+// 10 second connection tries.
+export function withTimeout(fetchFn: typeof fetch, ms = 35000): typeof fetch {
   return (input, init) => {
     if (init?.signal) return fetchFn(input, init);
     const controller = new AbortController();
