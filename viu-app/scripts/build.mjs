@@ -113,6 +113,27 @@ function checkAndroidTools() {
     );
     process.exit(1);
   }
+  if (isWindows) checkNinja(sdk);
+}
+
+// The ninja that ships with the SDK's CMake 3.22.1 (1.10) stops at 260
+// characters, and the codegen object paths under this repo run to about 400.
+// Ninja 1.12 handles long paths (Windows long paths must be on too).
+function checkNinja(sdk) {
+  const cmakeDir = join(sdk, 'cmake');
+  if (!existsSync(cmakeDir)) return; // Gradle installs CMake on first build
+  for (const v of readdirSync(cmakeDir)) {
+    const ninja = join(cmakeDir, v, 'bin', 'ninja.exe');
+    if (!existsSync(ninja)) continue;
+    const [major, minor] = (spawnSync(ninja, ['--version'], { encoding: 'utf8' }).stdout ?? '').trim().split('.').map(Number);
+    if (major > 1 || (major === 1 && minor >= 12)) continue;
+    console.error(
+      `${ninja} is too old for the long paths in this build.\n` +
+        'Replace it with ninja.exe from https://github.com/ninja-build/ninja/releases (1.12.1 or newer),\n' +
+        'keeping the old one as ninja.exe.bak, then run the build again.',
+    );
+    process.exit(1);
+  }
 }
 
 // The WireGuard library is built from the Go code the terminal app also runs
