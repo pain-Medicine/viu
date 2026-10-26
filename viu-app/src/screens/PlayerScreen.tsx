@@ -27,7 +27,11 @@ import { ProgressBar } from '../ui/ProgressBar';
 import { Text } from '../ui/Text';
 import { clock } from './format';
 
-const HIDE_AFTER_MS = 4000;
+const web = Platform.OS === 'web';
+// A remote's viewer is waiting on the sofa; a mouse's is a flick away.
+const HIDE_AFTER_MS = web ? 3000 : 4000;
+// Two clicks within this make a double-click, which toggles fullscreen.
+const DOUBLE_CLICK_MS = 300;
 // How long the bar stays up after seeking with the controls hidden.
 const SEEK_PEEK_MS = 1500;
 const SEEK_S = 10;
@@ -293,10 +297,16 @@ function Playback({
   // The overlay.
   const [overlay, setOverlay] = useState<Overlay>('controls');
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // On the web, the controls stay while the pointer rests on them.
+  const overBar = useRef(false);
   const showControls = useCallback(() => {
     setOverlay('controls');
     clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => setOverlay('hidden'), HIDE_AFTER_MS);
+    const hide = () => {
+      if (overBar.current) hideTimer.current = setTimeout(hide, HIDE_AFTER_MS);
+      else setOverlay('hidden');
+    };
+    hideTimer.current = setTimeout(hide, HIDE_AFTER_MS);
   }, []);
   const peekSeek = useCallback(() => {
     setOverlay((o) => (o === 'controls' ? o : 'seeking'));
@@ -318,6 +328,48 @@ function Playback({
     if (player.playing) player.pause();
     else player.play();
   }, [player]);
+
+  // Fullscreen, on the web: the whole player rather than the bare <video>,
+  // so the controls come along.
+  const root = useRef<HostInstance>(null);
+  const bar = useRef<HostInstance>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    if (!web) return;
+    const onChange = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      // Leaving the player leaves fullscreen too.
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+  const toggleFullscreen = useCallback(() => {
+    if (!web) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else (root.current as unknown as HTMLElement | null)?.requestFullscreen?.().catch(() => {});
+  }, []);
+
+  // A click on the video plays or pauses, the way browser players do; a
+  // double-click toggles fullscreen and puts play back as it was before the
+  // first click. A tap on a touch screen only brings the controls, like a
+  // phone app.
+  const lastClick = useRef({ at: 0, wasPlaying: false });
+  const onVideoPress = (e: { nativeEvent: object }) => {
+    const touch = (e.nativeEvent as { pointerType?: string }).pointerType === 'touch';
+    if (!web || touch) return showControls();
+    const now = Date.now();
+    if (now - lastClick.current.at < DOUBLE_CLICK_MS) {
+      if (lastClick.current.wasPlaying) player.play();
+      else player.pause();
+      toggleFullscreen();
+      lastClick.current.at = 0;
+    } else {
+      lastClick.current = { at: now, wasPlaying: player.playing };
+      togglePlay();
+    }
+    showControls();
+  };
 
   // Paused, the controls stay up.
   const controlsUp = overlay === 'controls' || (!isPlaying && !buffering);
@@ -361,6 +413,36 @@ function Playback({
   );
   const onKeyRef = useRef(onKey);
   onKeyRef.current = onKey;
+  // Keyboard keys as web players have them, whatever the controls show:
+  // arrows seek, Space and K play or pause, F is fullscreen, M mutes. Esc is
+  // the browser's for leaving fullscreen, and the app's Back otherwise.
+  const webKey = (key: string): boolean => {
+    if (upNextShown || askShown) return false;
+    const k = key.length === 1 ? key.toLowerCase() : key;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      seek(k === 'ArrowLeft' ? -SEEK_S : SEEK_S);
+      if (controlsUp) showControls();
+      else peekSeek();
+      return true;
+    }
+    if (k === ' ' || k === 'k') {
+      togglePlay();
+      showControls();
+      return true;
+    }
+    if (k === 'f') {
+      toggleFullscreen();
+      return true;
+    }
+    if (k === 'm') {
+      player.muted = !player.muted;
+      showControls();
+      return true;
+    }
+    return false;
+  };
+  const webKeyRef = useRef(webKey);
+  webKeyRef.current = webKey;
   useTVEventHandler((e) => {
     if (active) onKeyRef.current(e.eventType);
   });
@@ -378,13 +460,23 @@ function Playback({
     // Captures before the arrow-key focus mover, so hidden-controls seeking
     // doesn't also move focus.
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (webKeyRef.current(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       const key = keys[e.key];
       if (key && onKeyRef.current(key)) {
         e.preventDefault();
         e.stopPropagation();
       }
     };
-    const onMouse = () => onKeyRef.current('mouse');
+    const onMouse = (e: MouseEvent) => {
+      const el = bar.current as unknown as HTMLElement | null;
+      overBar.current = !!el && e.target instanceof Node && el.contains(e.target);
+      onKeyRef.current('mouse');
+    };
     window.addEventListener('keydown', onKeyDown, { capture: true });
     window.addEventListener('mousemove', onMouse);
     return () => {
@@ -454,10 +546,25 @@ function Playback({
 
   return (
     // Black behind the video, for letterboxing, in every theme.
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]}>
+    <View
+      ref={root}
+      style={[
+        StyleSheet.absoluteFill,
+        { backgroundColor: '#000' },
+        // The pointer hides with the controls, so it doesn't sit on the picture.
+        web && option && !controlsUp ? ({ cursor: 'none' } as object) : null,
+      ]}
+    >
       {option ? (
         <View ref={videoBox} style={StyleSheet.absoluteFill}>
-          <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+          {/* A <video> placed by its edges alone takes its own shape and sits
+              at the left, so the web also needs its size. */}
+          <VideoView
+            player={player}
+            style={[StyleSheet.absoluteFill, web ? { width: '100%', height: '100%' } : null]}
+            contentFit="contain"
+            nativeControls={false}
+          />
         </View>
       ) : (
         m && (
@@ -475,9 +582,9 @@ function Playback({
       <Pressable
         ref={catcher}
         focusable={focusOn === 'catcher'}
-        accessibilityLabel="Show controls"
-        onPress={showControls}
-        style={[StyleSheet.absoluteFill, Platform.OS === 'web' ? ({ outlineStyle: 'none', cursor: 'default' } as object) : null]}
+        accessibilityLabel={web ? 'Play or pause' : 'Show controls'}
+        onPress={onVideoPress}
+        style={[StyleSheet.absoluteFill, web ? ({ outlineStyle: 'none', cursor: controlsUp ? 'default' : 'none' } as object) : null]}
         {...(Platform.isTV ? { hasTVPreferredFocus: focusOn === 'catcher' } : {})}
       />
 
@@ -531,6 +638,18 @@ function Playback({
                 paddingRight: 28,
               }}
             >
+              {/* A remote has its own Back key; a browser window doesn't. */}
+              {web && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="chevronLeft"
+                  accessibilityLabel="Back"
+                  focusable={focusOn === 'controls'}
+                  onPress={nav.back}
+                  onFocus={showControls}
+                />
+              )}
               {m && (
                 <Art
                   uri={m.coverImage.large}
@@ -547,107 +666,119 @@ function Playback({
             </Panel>
           )}
 
-          <Panel
-            kind="chrome"
-            radius={40}
-            style={{ position: 'absolute', left: 80, right: 80, bottom: 56, paddingVertical: 30, paddingHorizontal: 36, gap: 24 }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24 }}>
-              <Text variant="label" color={c.text} style={{ fontVariant: ['tabular-nums'] }}>
-                {clock(time.currentTime)}
-              </Text>
-              <View style={{ flex: 1 }}>
-                <ProgressBar
-                  value={duration ? time.bufferedPosition / duration : 0}
-                  height={10}
-                  color={withAlpha(c.outline, 0.5)}
-                  track={c.outline}
-                />
-                <ProgressBar
-                  value={duration ? time.currentTime / duration : 0}
-                  height={10}
-                  track="transparent"
-                  color={c.progress}
-                  style={{ position: 'absolute', left: 0, right: 0, top: 0 }}
-                />
+          <View ref={bar} style={{ position: 'absolute', left: 80, right: 80, bottom: 56 }}>
+            <Panel kind="chrome" radius={40} style={{ paddingVertical: 30, paddingHorizontal: 36, gap: 24 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24 }}>
+                <Text variant="label" color={c.text} style={{ fontVariant: ['tabular-nums'] }}>
+                  {clock(time.currentTime)}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <ProgressBar
+                    value={duration ? time.bufferedPosition / duration : 0}
+                    height={10}
+                    color={withAlpha(c.outline, 0.5)}
+                    track={c.outline}
+                  />
+                  <ProgressBar
+                    value={duration ? time.currentTime / duration : 0}
+                    height={10}
+                    track="transparent"
+                    color={c.progress}
+                    style={{ position: 'absolute', left: 0, right: 0, top: 0 }}
+                  />
+                </View>
+                <Text variant="label" color={c.text} style={{ fontVariant: ['tabular-nums'] }}>
+                  {`−${clock(remaining)}`}
+                </Text>
               </View>
-              <Text variant="label" color={c.text} style={{ fontVariant: ['tabular-nums'] }}>
-                {`−${clock(remaining)}`}
-              </Text>
-            </View>
-            {controlsDrawn && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                <Button
-                  variant="ghost"
-                  icon="back10"
-                  accessibilityLabel="Back 10 seconds"
-                  focusable={focusOn === 'controls'}
-                  onPress={() => {
-                    seek(-SEEK_S);
-                    showControls();
-                  }}
-                  onFocus={showControls}
-                />
-                <Button
-                  ref={playButton}
-                  autoFocus={focusOn === 'controls'}
-                  focusable={focusOn === 'controls'}
-                  variant="primary"
-                  icon={isPlaying || buffering ? 'pause' : 'play'}
-                  accessibilityLabel={isPlaying || buffering ? 'Pause' : 'Play'}
-                  onPress={() => {
-                    togglePlay();
-                    showControls();
-                  }}
-                  onFocus={showControls}
-                />
-                <Button
-                  variant="ghost"
-                  icon="forward10"
-                  accessibilityLabel="Forward 10 seconds"
-                  focusable={focusOn === 'controls'}
-                  onPress={() => {
-                    seek(SEEK_S);
-                    showControls();
-                  }}
-                  onFocus={showControls}
-                />
-                <View style={{ flex: 1 }} />
-                {canSwitch && (
+              {controlsDrawn && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    label={`Switch server · ${option.label}`}
+                    variant="ghost"
+                    icon="back10"
+                    accessibilityLabel="Back 10 seconds"
                     focusable={focusOn === 'controls'}
                     onPress={() => {
-                      advance(null, player.currentTime);
+                      seek(-SEEK_S);
                       showControls();
                     }}
                     onFocus={showControls}
                   />
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  icon="list"
-                  label="Episodes"
-                  focusable={focusOn === 'controls'}
-                  onPress={toEpisodes}
-                  onFocus={showControls}
-                />
-                {next && (
                   <Button
-                    size="sm"
-                    icon="next"
-                    label="Next episode"
+                    ref={playButton}
+                    autoFocus={focusOn === 'controls'}
                     focusable={focusOn === 'controls'}
-                    onPress={goNext}
+                    variant="primary"
+                    icon={isPlaying || buffering ? 'pause' : 'play'}
+                    accessibilityLabel={isPlaying || buffering ? 'Pause' : 'Play'}
+                    onPress={() => {
+                      togglePlay();
+                      showControls();
+                    }}
                     onFocus={showControls}
                   />
-                )}
-              </View>
-            )}
-          </Panel>
+                  <Button
+                    variant="ghost"
+                    icon="forward10"
+                    accessibilityLabel="Forward 10 seconds"
+                    focusable={focusOn === 'controls'}
+                    onPress={() => {
+                      seek(SEEK_S);
+                      showControls();
+                    }}
+                    onFocus={showControls}
+                  />
+                  <View style={{ flex: 1 }} />
+                  {canSwitch && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      label={`Switch server · ${option.label}`}
+                      focusable={focusOn === 'controls'}
+                      onPress={() => {
+                        advance(null, player.currentTime);
+                        showControls();
+                      }}
+                      onFocus={showControls}
+                    />
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon="list"
+                    label="Episodes"
+                    focusable={focusOn === 'controls'}
+                    onPress={toEpisodes}
+                    onFocus={showControls}
+                  />
+                  {next && (
+                    <Button
+                      size="sm"
+                      icon="next"
+                      label="Next episode"
+                      focusable={focusOn === 'controls'}
+                      onPress={goNext}
+                      onFocus={showControls}
+                    />
+                  )}
+                  {web && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={fullscreen ? 'exitFullscreen' : 'fullscreen'}
+                      accessibilityLabel={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                      focusable={focusOn === 'controls'}
+                      onPress={() => {
+                        toggleFullscreen();
+                        showControls();
+                      }}
+                      onFocus={showControls}
+                    />
+                  )}
+                </View>
+              )}
+            </Panel>
+          </View>
         </Animated.View>
       )}
 
