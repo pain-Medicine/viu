@@ -282,6 +282,7 @@ const HomeRow = memo(function HomeRow({
         itemWidth={CARD_W}
         gap={CARD_GAP}
         inset={ROW_INSET}
+        artHeight={CARD_H}
         renderItem={(m, i, scrollTo) => {
           const e = history?.(m.id);
           const progress = e ? progressOf(e) : undefined;

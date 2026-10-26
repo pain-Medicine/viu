@@ -11,6 +11,7 @@ import { Empty } from '../ui/Empty';
 import { ErrorState } from '../ui/ErrorState';
 import { MediaCard, PosterSkeletons } from '../ui/MediaCard';
 import { Panel } from '../ui/Panel';
+import { HScroll } from '../ui/HScroll';
 import { gridColumns, gridGap, useCardSize, useStage } from '../ui/Stage';
 import { Text } from '../ui/Text';
 import { TopNav } from '../ui/TopNav';
@@ -98,14 +99,9 @@ export function BrowseScreen() {
         <Text variant="meta" color={c.textMuted} style={{ width: 150, paddingLeft: 80 - 66 }}>
           {label}
         </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ gap: 10, paddingVertical: 10, paddingRight: 14 }}
-        >
+        <HScroll beside style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingVertical: 10, paddingRight: 14 }}>
           {children}
-        </ScrollView>
+        </HScroll>
       </View>
     ) : (
       <View style={{ gap: 12 }}>

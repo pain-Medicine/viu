@@ -34,7 +34,9 @@ export function textStyle(theme: Theme, variant: TextRole, size?: number): TextS
 }
 
 // Headings and card titles balance their lines, so a long title doesn't leave one word alone
-// on the last line. Android has its own setting for it; browsers take CSS.
+// on the last line. Android has its own setting for it; browsers take CSS, but
+// only for text that may wrap: CSS text-wrap also turns wrapping back on, which
+// would undo a one-line limit.
 const BALANCED: TextRole[] = ['hero', 'page', 'headline', 'section', 'cardTitle'];
 const balancedWeb = { textWrap: 'balance' } as TextStyle;
 
@@ -44,6 +46,7 @@ export function Text({ variant = 'body', size, color, theme: override, style, ch
   const active = useTheme();
   const theme = override ?? active;
   const balanced = BALANCED.includes(variant);
+  const balancedOnWeb = balanced && Platform.OS === 'web' && rest.numberOfLines !== 1;
   return (
     <RNText
       maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -52,7 +55,7 @@ export function Text({ variant = 'body', size, color, theme: override, style, ch
       style={[
         textStyle(theme, variant, size),
         { color: color ?? theme.colors.text },
-        balanced && Platform.OS === 'web' && balancedWeb,
+        balancedOnWeb && balancedWeb,
         style,
       ]}
     >

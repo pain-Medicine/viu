@@ -14,6 +14,7 @@ export type IconName =
   | 'next'
   | 'check'
   | 'chevronLeft'
+  | 'chevronRight'
   | 'list'
   | 'mic'
   | 'grid'
@@ -83,6 +84,7 @@ export function Icon({ name, size = 24, color, square: squareProp }: Props) {
         {name === 'next' && <Path d="M5 5l9 7-9 7zM15 5h3v14h-3z" fill={color} />}
         {name === 'check' && <Path d="M5 12l5 5 9-10" {...stroke} strokeWidth={2.6} />}
         {name === 'chevronLeft' && <Path d="M15 5l-7 7 7 7" {...stroke} />}
+        {name === 'chevronRight' && <Path d="M9 5l7 7-7 7" {...stroke} />}
         {name === 'list' && <Path d="M4 7h16M4 12h10M4 17h7" {...stroke} />}
         {name === 'mic' && (
           <>

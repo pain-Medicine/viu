@@ -83,11 +83,13 @@ export function ScheduleScreen() {
   const daysH = useRef(0);
   const flow = useStage().mode === 'flow';
 
-  // Today opens at what's airing next rather than at midnight. The scroll
-  // waits for the rows to lay out, since it can't go past the content yet.
+  // On a TV, Today opens at what's airing next rather than at midnight. The
+  // scroll waits for the rows to lay out, since it can't go past the content
+  // yet. Where the whole page scrolls it would scroll the nav away, so the
+  // page opens at the top there.
   const opened = useRef(false);
   const toUpcoming = () => {
-    if (opened.current || dayIndex !== 0 || !list.length) return;
+    if (flow || opened.current || dayIndex !== 0 || !list.length) return;
     opened.current = true;
     const upcoming = list.findIndex((a) => a.airingAt > Date.now() / 1000);
     const y = Math.max(0, (upcoming < 0 ? list.length : upcoming) - 1) * ROW_STEP + rowsTop.current - daysH.current;
